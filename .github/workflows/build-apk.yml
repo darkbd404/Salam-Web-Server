@@ -11,7 +11,7 @@ jobs:
     steps:
 
       # =========================================
-      # CHECKOUT PROJECT
+      # CHECKOUT
       # =========================================
 
       - name: Checkout
@@ -32,10 +32,6 @@ jobs:
       # =========================================
       # ANDROID SDK
       # =========================================
-      # GitHub Ubuntu runner already provides
-      # Android SDK. Do NOT run sdkmanager.
-      # Do NOT chmod SDK files.
-      # Do NOT install command line tools.
 
       - name: Verify Android SDK
         shell: bash
@@ -48,23 +44,26 @@ jobs:
           ls -la "$ANDROID_HOME"
 
           echo ""
-          echo "Installed platforms:"
+          echo "Platforms:"
           ls -la "$ANDROID_HOME/platforms" || true
 
           echo ""
-          echo "Installed build tools:"
+          echo "Build Tools:"
           ls -la "$ANDROID_HOME/build-tools" || true
 
           echo ""
-          echo "Android SDK check completed."
+          echo "Android SDK ready."
 
 
       # =========================================
-      # GRADLE PERMISSION
+      # CHECK GRADLE
       # =========================================
 
-      - name: Make Gradle executable
-        run: chmod +x ./gradlew
+      - name: Check Gradle
+        shell: bash
+        run: |
+          echo "Checking Gradle..."
+          gradle --version
 
 
       # =========================================
@@ -72,7 +71,9 @@ jobs:
       # =========================================
 
       - name: Build APK
-        run: ./gradlew assembleDebug --no-daemon
+        shell: bash
+        run: |
+          gradle assembleDebug --no-daemon
 
 
       # =========================================
