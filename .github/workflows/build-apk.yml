@@ -1,10 +1,8 @@
 name: Build APK
-
 on:
   workflow_dispatch:
   push:
-    branches: [ main ]
-
+    branches: [main]
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -18,16 +16,13 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
-      - name: Check Android SDK
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v4
+      - name: Install Android SDK
         run: |
-          echo "ANDROID_HOME=$ANDROID_HOME"
-          test -d "$ANDROID_HOME"
-      - name: Install Android SDK packages
-        run: |
-          SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager | head -n 1)"
-          test -n "$SDKMANAGER"
-          yes | "$SDKMANAGER" --sdk_root="$ANDROID_HOME" --licenses >/dev/null || true
-          "$SDKMANAGER" --sdk_root="$ANDROID_HOME" "platform-tools" "platforms;android-35" "build-tools;35.0.0"
+          sdkmanager "platform-tools"
+          sdkmanager "platforms;android-35"
+          sdkmanager "build-tools;35.0.0"
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
