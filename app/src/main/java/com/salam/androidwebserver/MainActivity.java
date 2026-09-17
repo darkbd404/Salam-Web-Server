@@ -2,57 +2,973 @@ package com.salam.androidwebserver;
 
 import android.app.Activity;
 import android.os.Bundle;
-import android.os.StrictMode;
+import android.os.Handler;
+import android.os.Looper;
 import android.content.Intent;
 import android.net.Uri;
-import android.widget.*;
-import java.io.*;
-import java.net.*;
-import java.util.concurrent.*;
+import android.graphics.Color;
+import android.view.Gravity;
+import android.view.View;
+import android.widget.Button;
+import android.widget.EditText;
+import android.widget.LinearLayout;
+import android.widget.TextView;
+import android.widget.Toast;
 
+import java.io.BufferedReader;
+import java.io.BufferedWriter;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.io.OutputStreamWriter;
+import java.net.Inet4Address;
+import java.net.InetAddress;
+import java.net.NetworkInterface;
+import java.net.ServerSocket;
+import java.net.Socket;
+import java.util.Enumeration;
+import java.util.Locale;
+
+/**
+ * Salam Android Web Server
+ *
+ * Simple HTTP server for hosting files from Android.
+ */
 public class MainActivity extends Activity {
-    EditText port; TextView status,url; HttpServer server;
-    File www;
-    @Override public void onCreate(Bundle b){
-        super.onCreate(b); setContentView(R.layout.activity_main);
-        port=findViewById(R.id.port); status=findViewById(R.id.status); url=findViewById(R.id.url);
-        www=new File(getFilesDir(),"www"); if(!www.exists()) www.mkdirs();
-        File index=new File(www,"index.html");
-        if(!index.exists()) try { FileWriter w=new FileWriter(index); w.write("<!doctype html><html><head><meta name='viewport' content='width=device-width'><title>Salam Server</title></head><body><h1>Salam Web Server</h1><p>Your Android server is running.</p></body></html>"); w.close(); } catch(Exception ignored){}
-        findViewById(R.id.start).setOnClickListener(v->startServer());
-        findViewById(R.id.stop).setOnClickListener(v->stopServer());
-        findViewById(R.id.open).setOnClickListener(v->{ if(server!=null){ Intent i=new Intent(Intent.ACTION_VIEW,Uri.parse("http://127.0.0.1:"+server.port)); startActivity(i);} });
-    }
-    void startServer(){
-        stopServer();
-        try { int p=Integer.parseInt(port.getText().toString().trim()); server=new HttpServer(p,www); server.start();
-            status.setText("● Server running"); url.setText("URL: http://"+getIp()+":"+p);
-        } catch(Exception e){ Toast.makeText(this,"Could not start: "+e.getMessage(),Toast.LENGTH_LONG).show(); }
-    }
-    void stopServer(){ if(server!=null){server.stop(); server=null; status.setText("● Server stopped"); url.setText("URL: -");} }
-    String getIp(){ try { Enumeration<NetworkInterface> en=NetworkInterface.getNetworkInterfaces(); while(en.hasMoreElements()){ NetworkInterface ni=en.nextElement(); Enumeration<InetAddress> a=ni.getInetAddresses(); while(a.hasMoreElements()){ InetAddress x=a.nextElement(); if(!x.isLoopbackAddress() && x instanceof Inet4Address) return x.getHostAddress(); }} }catch(Exception ignored){} return "127.0.0.1"; }
-    @Override protected void onDestroy(){ stopServer(); super.onDestroy(); }
 
-    static class HttpServer {
-        ServerSocket ss; volatile boolean run; int port; File root; ExecutorService pool=Executors.newCachedThreadPool();
-        HttpServer(int p,File r){port=p;root=r;}
-        void start() throws IOException { ss=new ServerSocket(port); run=true; pool.submit(()->{while(run) try{Socket s=ss.accept();pool.submit(()->handle(s));}catch(Exception ignored){}}); }
-        void stop(){run=false;try{if(ss!=null)ss.close();}catch(Exception ignored){} pool.shutdownNow();}
-        void handle(Socket s){
-            try{
-                s.setSoTimeout(5000); BufferedReader br=new BufferedReader(new InputStreamReader(s.getInputStream()));
-                String line=br.readLine(); if(line==null){s.close();return;}
-                String[] q=line.split(" "); String path=q.length>1?q[1]:"/";
-                path=URLDecoder.decode(path,"UTF-8"); if(path.contains("..")){send(s,403,"Forbidden","text/plain");return;}
-                File f=new File(root,path.equals("/")?"index.html":path.substring(1));
-                if(f.isDirectory()) f=new File(f,"index.html");
-                if(!f.exists()||!f.isFile()){send(s,404,"Not Found","text/plain");return;}
-                byte[] data=read(f); String type=mime(f.getName());
-                OutputStream out=s.getOutputStream(); String h="HTTP/1.1 200 OK\r\nContent-Type: "+type+"\r\nContent-Length: "+data.length+"\r\nConnection: close\r\n\r\n"; out.write(h.getBytes());out.write(data);out.flush();s.close();
-            }catch(Exception ignored){try{s.close();}catch(Exception x){}}
+    private EditText portInput;
+    private TextView statusText;
+    private TextView ipText;
+    private Button startButton;
+    private Button stopButton;
+    private Button openButton;
+
+    private ServerSocket serverSocket;
+    private Thread serverThread;
+
+    private volatile boolean serverRunning = false;
+
+    private int serverPort = 8080;
+
+    private File wwwDirectory;
+
+    private final Handler mainHandler =
+            new Handler(Looper.getMainLooper());
+
+
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+
+        createWebDirectory();
+        createInterface();
+    }
+
+
+    /**
+     * Create website directory.
+     */
+    private void createWebDirectory() {
+
+        wwwDirectory = new File(getFilesDir(), "www");
+
+        if (!wwwDirectory.exists()) {
+            wwwDirectory.mkdirs();
         }
-        byte[] read(File f)throws Exception{ByteArrayOutputStream b=new ByteArrayOutputStream();InputStream in=new FileInputStream(f);byte[] x=new byte[8192];int n;while((n=in.read(x))!=-1)b.write(x,0,n);in.close();return b.toByteArray();}
-        void send(Socket s,int code,String text,String type)throws Exception{byte[] d=text.getBytes();String h="HTTP/1.1 "+code+" "+text+"\r\nContent-Type: "+type+"\r\nContent-Length: "+d.length+"\r\nConnection: close\r\n\r\n";s.getOutputStream().write(h.getBytes());s.getOutputStream().write(d);s.close();}
-        String mime(String n){n=n.toLowerCase();if(n.endsWith(".html"))return"text/html; charset=utf-8";if(n.endsWith(".css"))return"text/css";if(n.endsWith(".js"))return"application/javascript";if(n.endsWith(".json"))return"application/json";if(n.endsWith(".png"))return"image/png";if(n.endsWith(".jpg")||n.endsWith(".jpeg"))return"image/jpeg";if(n.endsWith(".svg"))return"image/svg+xml";if(n.endsWith(".pdf"))return"application/pdf";return"application/octet-stream";}
+
+        File indexFile = new File(wwwDirectory, "index.html");
+
+        if (!indexFile.exists()) {
+
+            String html =
+                    "<!DOCTYPE html>" +
+                    "<html>" +
+                    "<head>" +
+                    "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">" +
+                    "<title>Salam Web Server</title>" +
+                    "<style>" +
+                    "body{" +
+                    "font-family:Arial,sans-serif;" +
+                    "background:#111;" +
+                    "color:white;" +
+                    "text-align:center;" +
+                    "padding:40px 20px;" +
+                    "}" +
+                    ".box{" +
+                    "max-width:500px;" +
+                    "margin:auto;" +
+                    "padding:30px;" +
+                    "border-radius:20px;" +
+                    "background:#222;" +
+                    "}" +
+                    "h1{margin-bottom:10px;}" +
+                    "</style>" +
+                    "</head>" +
+                    "<body>" +
+                    "<div class=\"box\">" +
+                    "<h1>Salam Web Server</h1>" +
+                    "<p>Server is working successfully.</p>" +
+                    "<p>Welcome to your Android Web Server.</p>" +
+                    "</div>" +
+                    "</body>" +
+                    "</html>";
+
+            try {
+
+                FileOutputStream fos =
+                        new FileOutputStream(indexFile);
+
+                fos.write(html.getBytes("UTF-8"));
+                fos.close();
+
+            } catch (Exception ignored) {
+            }
+        }
+    }
+
+
+    /**
+     * Create Android UI programmatically.
+     * This means the MainActivity does not depend on
+     * specific IDs inside activity_main.xml.
+     */
+    private void createInterface() {
+
+        LinearLayout root =
+                new LinearLayout(this);
+
+        root.setOrientation(LinearLayout.VERTICAL);
+        root.setPadding(30, 40, 30, 30);
+        root.setBackgroundColor(Color.rgb(15, 15, 15));
+
+
+        TextView title =
+                new TextView(this);
+
+        title.setText("Salam Android Web Server");
+        title.setTextColor(Color.WHITE);
+        title.setTextSize(24);
+        title.setGravity(Gravity.CENTER);
+        title.setPadding(0, 10, 0, 30);
+
+        root.addView(
+                title,
+                new LinearLayout.LayoutParams(
+                        -1,
+                        -2
+                )
+        );
+
+
+        TextView info =
+                new TextView(this);
+
+        info.setText(
+                "Host websites directly from your Android phone"
+        );
+
+        info.setTextColor(Color.LTGRAY);
+        info.setTextSize(15);
+        info.setGravity(Gravity.CENTER);
+        info.setPadding(0, 0, 0, 30);
+
+        root.addView(
+                info,
+                new LinearLayout.LayoutParams(
+                        -1,
+                        -2
+                )
+        );
+
+
+        TextView portLabel =
+                new TextView(this);
+
+        portLabel.setText("Server Port");
+        portLabel.setTextColor(Color.WHITE);
+        portLabel.setTextSize(16);
+
+        root.addView(
+                portLabel,
+                new LinearLayout.LayoutParams(
+                        -1,
+                        -2
+                )
+        );
+
+
+        portInput =
+                new EditText(this);
+
+        portInput.setText("8080");
+        portInput.setTextColor(Color.WHITE);
+        portInput.setTextSize(17);
+        portInput.setSingleLine(true);
+        portInput.setInputType(2);
+
+        root.addView(
+                portInput,
+                new LinearLayout.LayoutParams(
+                        -1,
+                        -2
+                )
+        );
+
+
+        statusText =
+                new TextView(this);
+
+        statusText.setText("● Server Stopped");
+        statusText.setTextColor(Color.RED);
+        statusText.setTextSize(18);
+        statusText.setGravity(Gravity.CENTER);
+        statusText.setPadding(0, 35, 0, 15);
+
+        root.addView(
+                statusText,
+                new LinearLayout.LayoutParams(
+                        -1,
+                        -2
+                )
+        );
+
+
+        ipText =
+                new TextView(this);
+
+        ipText.setText("IP: Not running");
+        ipText.setTextColor(Color.LTGRAY);
+        ipText.setTextSize(15);
+        ipText.setGravity(Gravity.CENTER);
+        ipText.setPadding(0, 5, 0, 25);
+
+        root.addView(
+                ipText,
+                new LinearLayout.LayoutParams(
+                        -1,
+                        -2
+                )
+        );
+
+
+        startButton =
+                new Button(this);
+
+        startButton.setText("START SERVER");
+
+        root.addView(
+                startButton,
+                new LinearLayout.LayoutParams(
+                        -1,
+                        -2
+                )
+        );
+
+
+        stopButton =
+                new Button(this);
+
+        stopButton.setText("STOP SERVER");
+        stopButton.setEnabled(false);
+
+        root.addView(
+                stopButton,
+                new LinearLayout.LayoutParams(
+                        -1,
+                        -2
+                )
+        );
+
+
+        openButton =
+                new Button(this);
+
+        openButton.setText("OPEN WEBSITE");
+        openButton.setEnabled(false);
+
+        root.addView(
+                openButton,
+                new LinearLayout.LayoutParams(
+                        -1,
+                        -2
+                )
+        );
+
+
+        TextView folderText =
+                new TextView(this);
+
+        folderText.setText(
+                "\nWebsite folder:\n" +
+                "Internal Storage / files / www\n\n" +
+                "Place your HTML, CSS, JS, JSON, images and PDF files there."
+        );
+
+        folderText.setTextColor(Color.GRAY);
+        folderText.setTextSize(13);
+        folderText.setGravity(Gravity.CENTER);
+
+        root.addView(
+                folderText,
+                new LinearLayout.LayoutParams(
+                        -1,
+                        -2
+                )
+        );
+
+
+        startButton.setOnClickListener(
+                new View.OnClickListener() {
+                    @Override
+                    public void onClick(View v) {
+                        startServer();
+                    }
+                }
+        );
+
+
+        stopButton.setOnClickListener(
+                new View.OnClickListener() {
+                    @Override
+                    public void onClick(View v) {
+                        stopServer();
+                    }
+                }
+        );
+
+
+        openButton.setOnClickListener(
+                new View.OnClickListener() {
+                    @Override
+                    public void onClick(View v) {
+                        openWebsite();
+                    }
+                }
+        );
+
+
+        setContentView(root);
+    }
+
+
+    /**
+     * Start HTTP server.
+     */
+    private void startServer() {
+
+        if (serverRunning) {
+            return;
+        }
+
+
+        String portText =
+                portInput.getText().toString().trim();
+
+
+        try {
+
+            serverPort =
+                    Integer.parseInt(portText);
+
+        } catch (Exception e) {
+
+            Toast.makeText(
+                    this,
+                    "Invalid port number",
+                    Toast.LENGTH_SHORT
+            ).show();
+
+            return;
+        }
+
+
+        if (serverPort < 1024 ||
+                serverPort > 65535) {
+
+            Toast.makeText(
+                    this,
+                    "Use port between 1024 and 65535",
+                    Toast.LENGTH_SHORT
+            ).show();
+
+            return;
+        }
+
+
+        serverThread =
+                new Thread(
+                        new Runnable() {
+
+                            @Override
+                            public void run() {
+
+                                try {
+
+                                    serverSocket =
+                                            new ServerSocket(serverPort);
+
+                                    serverRunning = true;
+
+                                    updateServerUI(true);
+
+                                    while (serverRunning) {
+
+                                        Socket client =
+                                                serverSocket.accept();
+
+                                        new Thread(
+                                                new ClientHandler(client)
+                                        ).start();
+                                    }
+
+                                } catch (Exception e) {
+
+                                    serverRunning = false;
+
+                                    updateServerUI(false);
+                                }
+                            }
+                        }
+                );
+
+
+        serverThread.start();
+    }
+
+
+    /**
+     * Stop HTTP server.
+     */
+    private void stopServer() {
+
+        serverRunning = false;
+
+        try {
+
+            if (serverSocket != null) {
+                serverSocket.close();
+            }
+
+        } catch (Exception ignored) {
+        }
+
+
+        updateServerUI(false);
+    }
+
+
+    /**
+     * Update UI from server thread.
+     */
+    private void updateServerUI(
+            final boolean running) {
+
+        mainHandler.post(
+                new Runnable() {
+
+                    @Override
+                    public void run() {
+
+                        if (running) {
+
+                            String ip =
+                                    getLocalIpAddress();
+
+                            statusText.setText(
+                                    "● Server Running"
+                            );
+
+                            statusText.setTextColor(
+                                    Color.GREEN
+                            );
+
+                            ipText.setText(
+                                    "http://" +
+                                    ip +
+                                    ":" +
+                                    serverPort
+                            );
+
+                            startButton.setEnabled(false);
+                            stopButton.setEnabled(true);
+                            openButton.setEnabled(true);
+
+                        } else {
+
+                            statusText.setText(
+                                    "● Server Stopped"
+                            );
+
+                            statusText.setTextColor(
+                                    Color.RED
+                            );
+
+                            ipText.setText(
+                                    "IP: Not running"
+                            );
+
+                            startButton.setEnabled(true);
+                            stopButton.setEnabled(false);
+                            openButton.setEnabled(false);
+                        }
+                    }
+                }
+        );
+    }
+
+
+    /**
+     * Get Android phone's local IPv4 address.
+     */
+    private String getLocalIpAddress() {
+
+        try {
+
+            Enumeration<NetworkInterface> interfaces =
+                    NetworkInterface.getNetworkInterfaces();
+
+            while (interfaces.hasMoreElements()) {
+
+                NetworkInterface networkInterface =
+                        interfaces.nextElement();
+
+                Enumeration<InetAddress> addresses =
+                        networkInterface.getInetAddresses();
+
+                while (addresses.hasMoreElements()) {
+
+                    InetAddress address =
+                            addresses.nextElement();
+
+                    if (!address.isLoopbackAddress()
+                            && address instanceof Inet4Address) {
+
+                        return address.getHostAddress();
+                    }
+                }
+            }
+
+        } catch (Exception ignored) {
+        }
+
+
+        return "127.0.0.1";
+    }
+
+
+    /**
+     * Open website in Android browser.
+     */
+    private void openWebsite() {
+
+        String ip =
+                getLocalIpAddress();
+
+        String url =
+                "http://" +
+                ip +
+                ":" +
+                serverPort;
+
+
+        try {
+
+            Intent intent =
+                    new Intent(
+                            Intent.ACTION_VIEW,
+                            Uri.parse(url)
+                    );
+
+            startActivity(intent);
+
+        } catch (Exception e) {
+
+            Toast.makeText(
+                    this,
+                    url,
+                    Toast.LENGTH_LONG
+            ).show();
+        }
+    }
+
+
+    /**
+     * Handle HTTP clients.
+     */
+    private class ClientHandler
+            implements Runnable {
+
+        private final Socket socket;
+
+
+        ClientHandler(Socket socket) {
+            this.socket = socket;
+        }
+
+
+        @Override
+        public void run() {
+
+            try {
+
+                InputStream input =
+                        socket.getInputStream();
+
+                OutputStream output =
+                        socket.getOutputStream();
+
+
+                BufferedReader reader =
+                        new BufferedReader(
+                                new java.io.InputStreamReader(input)
+                        );
+
+
+                String requestLine =
+                        reader.readLine();
+
+
+                if (requestLine == null) {
+
+                    socket.close();
+                    return;
+                }
+
+
+                String[] requestParts =
+                        requestLine.split(" ");
+
+
+                if (requestParts.length < 2) {
+
+                    socket.close();
+                    return;
+                }
+
+
+                String path =
+                        requestParts[1];
+
+
+                int questionMark =
+                        path.indexOf("?");
+
+
+                if (questionMark >= 0) {
+
+                    path =
+                            path.substring(
+                                    0,
+                                    questionMark
+                            );
+                }
+
+
+                path =
+                        Uri.decode(path);
+
+
+                if (path.equals("/")) {
+
+                    path = "/index.html";
+                }
+
+
+                /*
+                 * Security:
+                 * Prevent ../ path traversal.
+                 */
+                if (path.contains("..")) {
+
+                    sendError(
+                            output,
+                            403,
+                            "Forbidden"
+                    );
+
+                    socket.close();
+                    return;
+                }
+
+
+                File requestedFile =
+                        new File(
+                                wwwDirectory,
+                                path.substring(1)
+                        );
+
+
+                if (!requestedFile.exists()
+                        || !requestedFile.isFile()) {
+
+                    sendError(
+                            output,
+                            404,
+                            "File Not Found"
+                    );
+
+                    socket.close();
+                    return;
+                }
+
+
+                String mimeType =
+                        getMimeType(
+                                requestedFile.getName()
+                        );
+
+
+                long fileLength =
+                        requestedFile.length();
+
+
+                String headers =
+                        "HTTP/1.1 200 OK\r\n" +
+                        "Content-Type: " +
+                        mimeType +
+                        "\r\n" +
+                        "Content-Length: " +
+                        fileLength +
+                        "\r\n" +
+                        "Connection: close\r\n" +
+                        "\r\n";
+
+
+                BufferedWriter writer =
+                        new BufferedWriter(
+                                new OutputStreamWriter(
+                                        output,
+                                        "UTF-8"
+                                )
+                        );
+
+
+                writer.write(headers);
+                writer.flush();
+
+
+                FileInputStream fileInput =
+                        new FileInputStream(
+                                requestedFile
+                        );
+
+
+                byte[] buffer =
+                        new byte[8192];
+
+
+                int count;
+
+
+                while ((count =
+                        fileInput.read(buffer)) != -1) {
+
+                    output.write(
+                            buffer,
+                            0,
+                            count
+                    );
+                }
+
+
+                output.flush();
+
+                fileInput.close();
+                socket.close();
+
+
+            } catch (Exception ignored) {
+
+                try {
+                    socket.close();
+                } catch (Exception ignored2) {
+                }
+            }
+        }
+    }
+
+
+    /**
+     * Send HTTP error response.
+     */
+    private void sendError(
+            OutputStream output,
+            int code,
+            String message) {
+
+        try {
+
+            String body =
+                    "<html>" +
+                    "<head>" +
+                    "<meta charset=\"UTF-8\">" +
+                    "<title>" +
+                    code +
+                    "</title>" +
+                    "</head>" +
+                    "<body>" +
+                    "<h1>" +
+                    code +
+                    " " +
+                    message +
+                    "</h1>" +
+                    "</body>" +
+                    "</html>";
+
+
+            byte[] bodyBytes =
+                    body.getBytes("UTF-8");
+
+
+            String headers =
+                    "HTTP/1.1 " +
+                    code +
+                    " " +
+                    message +
+                    "\r\n" +
+                    "Content-Type: text/html; charset=UTF-8\r\n" +
+                    "Content-Length: " +
+                    bodyBytes.length +
+                    "\r\n" +
+                    "Connection: close\r\n" +
+                    "\r\n";
+
+
+            output.write(
+                    headers.getBytes("UTF-8")
+            );
+
+            output.write(bodyBytes);
+
+            output.flush();
+
+        } catch (Exception ignored) {
+        }
+    }
+
+
+    /**
+     * MIME type detection.
+     */
+    private String getMimeType(
+            String fileName) {
+
+        String name =
+                fileName.toLowerCase(
+                        Locale.US
+                );
+
+
+        if (name.endsWith(".html")
+                || name.endsWith(".htm")) {
+
+            return "text/html; charset=UTF-8";
+        }
+
+
+        if (name.endsWith(".css")) {
+
+            return "text/css; charset=UTF-8";
+        }
+
+
+        if (name.endsWith(".js")) {
+
+            return "application/javascript; charset=UTF-8";
+        }
+
+
+        if (name.endsWith(".json")) {
+
+            return "application/json; charset=UTF-8";
+        }
+
+
+        if (name.endsWith(".txt")) {
+
+            return "text/plain; charset=UTF-8";
+        }
+
+
+        if (name.endsWith(".xml")) {
+
+            return "application/xml; charset=UTF-8";
+        }
+
+
+        if (name.endsWith(".pdf")) {
+
+            return "application/pdf";
+        }
+
+
+        if (name.endsWith(".png")) {
+
+            return "image/png";
+        }
+
+
+        if (name.endsWith(".jpg")
+                || name.endsWith(".jpeg")) {
+
+            return "image/jpeg";
+        }
+
+
+        if (name.endsWith(".gif")) {
+
+            return "image/gif";
+        }
+
+
+        if (name.endsWith(".webp")) {
+
+            return "image/webp";
+        }
+
+
+        if (name.endsWith(".svg")) {
+
+            return "image/svg+xml";
+        }
+
+
+        if (name.endsWith(".ico")) {
+
+            return "image/x-icon";
+        }
+
+
+        if (name.endsWith(".mp3")) {
+
+            return "audio/mpeg";
+        }
+
+
+        if (name.endsWith(".mp4")) {
+
+            return "video/mp4";
+        }
+
+
+        if (name.endsWith(".zip")) {
+
+            return "application/zip";
+        }
+
+
+        return "application/octet-stream";
+    }
+
+
+    @Override
+    protected void onDestroy() {
+
+        stopServer();
+
+        super.onDestroy();
     }
 }
