@@ -8,23 +8,19 @@ jobs:
     name: Build APK
     runs-on: ubuntu-latest
 
-    env:
-      ANDROID_HOME: /usr/local/lib/android/sdk
-      ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
-
     steps:
 
-      # ==========================================
-      # CHECKOUT
-      # ==========================================
+      # =========================================
+      # CHECKOUT PROJECT
+      # =========================================
 
       - name: Checkout
         uses: actions/checkout@v4
 
 
-      # ==========================================
+      # =========================================
       # JAVA 17
-      # ==========================================
+      # =========================================
 
       - name: Setup Java 17
         uses: actions/setup-java@v4
@@ -33,55 +29,55 @@ jobs:
           java-version: '17'
 
 
-      # ==========================================
+      # =========================================
       # ANDROID SDK
-      # ==========================================
+      # =========================================
+      # GitHub Ubuntu runner already provides
+      # Android SDK. Do NOT run sdkmanager.
+      # Do NOT chmod SDK files.
+      # Do NOT install command line tools.
 
-      - name: Check Android SDK
+      - name: Verify Android SDK
         shell: bash
         run: |
+          echo "ANDROID_HOME=$ANDROID_HOME"
+          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT"
+
+          echo ""
           echo "Android SDK:"
-          echo "$ANDROID_HOME"
+          ls -la "$ANDROID_HOME"
 
           echo ""
-          echo "SDK folders:"
-          ls -la "$ANDROID_HOME" || true
-
-          echo ""
-          echo "Platforms:"
+          echo "Installed platforms:"
           ls -la "$ANDROID_HOME/platforms" || true
 
           echo ""
-          echo "Build Tools:"
+          echo "Installed build tools:"
           ls -la "$ANDROID_HOME/build-tools" || true
 
           echo ""
-          echo "Platform Tools:"
-          ls -la "$ANDROID_HOME/platform-tools" || true
-
-          echo ""
-          echo "Android SDK is ready."
+          echo "Android SDK check completed."
 
 
-      # ==========================================
-      # GRADLE
-      # ==========================================
+      # =========================================
+      # GRADLE PERMISSION
+      # =========================================
 
       - name: Make Gradle executable
         run: chmod +x ./gradlew
 
 
-      # ==========================================
-      # BUILD
-      # ==========================================
+      # =========================================
+      # BUILD APK
+      # =========================================
 
       - name: Build APK
         run: ./gradlew assembleDebug --no-daemon
 
 
-      # ==========================================
-      # APK ARTIFACT
-      # ==========================================
+      # =========================================
+      # UPLOAD APK
+      # =========================================
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
