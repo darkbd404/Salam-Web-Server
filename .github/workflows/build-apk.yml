@@ -12,6 +12,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+
       - name: Checkout repository
         uses: actions/checkout@v4
 
@@ -20,24 +21,16 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
-          cache: gradle
 
       - name: Setup Android SDK
         shell: bash
         run: |
           set -e
 
-          echo "ANDROID_HOME=$ANDROID_HOME"
-          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT"
-
           SDK_ROOT="${ANDROID_HOME:-$ANDROID_SDK_ROOT}"
 
-          if [ -z "$SDK_ROOT" ]; then
-            echo "ERROR: Android SDK path not found."
-            exit 1
-          fi
-
-          echo "SDK_ROOT=$SDK_ROOT"
+          echo "Android SDK:"
+          echo "$SDK_ROOT"
 
           SDKMANAGER="$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
 
@@ -50,54 +43,50 @@ jobs:
           fi
 
           if [ -z "$SDKMANAGER" ]; then
-            echo "ERROR: executable sdkmanager not found."
-            find "$SDK_ROOT/cmdline-tools" \
-              -type f \
-              -name sdkmanager \
-              2>/dev/null || true
+            echo "ERROR: sdkmanager not found"
             exit 1
           fi
 
-          echo "Using sdkmanager:"
+          echo "Using:"
           echo "$SDKMANAGER"
 
-          echo "Accepting Android SDK licenses..."
           yes | "$SDKMANAGER" --licenses > /dev/null || true
-
-          echo "Installing required SDK packages..."
 
           "$SDKMANAGER" \
             "platform-tools" \
             "platforms;android-35" \
             "build-tools;35.0.0"
 
-          echo "Android SDK setup completed."
+          echo "Android SDK ready."
 
-      - name: Setup Gradle
+      # IMPORTANT:
+      # AGP 8.7.3 must NOT use Gradle 9.x
+      - name: Setup Gradle 8.10.2
         uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.10.2'
 
-      - name: Prepare Gradle
+      - name: Check Build Environment
         shell: bash
         run: |
-          if [ -f "./gradlew" ]; then
-            echo "Gradle wrapper found."
-            chmod +x ./gradlew
-          else
-            echo "Gradle wrapper not found."
-            echo "Using system Gradle."
-            gradle --version
-          fi
+          echo "===== JAVA ====="
+          java -version
+
+          echo "===== GRADLE ====="
+          gradle --version
+
+          echo "===== ANDROID SDK ====="
+          echo "$ANDROID_HOME"
 
       - name: Build Debug APK
         shell: bash
         run: |
           set -e
 
-          if [ -f "./gradlew" ]; then
-            ./gradlew assembleDebug --no-daemon --stacktrace
-          else
-            gradle assembleDebug --no-daemon --stacktrace
-          fi
+          gradle \
+            assembleDebug \
+            --no-daemon \
+            --stacktrace
 
       - name: Verify APK
         shell: bash
@@ -110,9 +99,10 @@ jobs:
             exit 1
           fi
 
-          echo "================================="
-          echo "APK BUILD SUCCESSFUL"
-          echo "================================="
+          echo "======================================"
+          echo "SALAM SIP SERVER V10 APK SUCCESS"
+          echo "======================================"
+
           ls -lh "$APK"
 
       - name: Upload APK
