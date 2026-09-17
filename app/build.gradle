@@ -7,11 +7,11 @@ android {
     compileSdk 35
 
     defaultConfig {
-        applicationId 'com.salam.androidwebserver"
+        applicationId 'com.salam.androidwebserver'
         minSdk 26
         targetSdk 35
         versionCode 10
-        versionName "10.0"
+        versionName '10.0'
     }
 
     compileOptions {
@@ -23,6 +23,5 @@ android {
 dependencies {
     implementation 'androidx.appcompat:appcompat:1.7.0'
     implementation 'com.google.android.material:material:1.12.0'
-
     implementation 'com.journeyapps:zxing-android-embedded:4.3.0'
 }
