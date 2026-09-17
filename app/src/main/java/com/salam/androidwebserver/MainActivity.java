@@ -17,40 +17,312 @@ import android.graphics.Bitmap;
 
 public class MainActivity extends Activity {
     final int GREEN=Color.rgb(25,230,165), PURPLE=Color.rgb(108,99,255), CYAN=Color.rgb(0,190,255);
-    LinearLayout content; TextView status,url,stats,system; SharedPreferences prefs;
+    LinearLayout content;
+    TextView status,url,stats,system;
+    SharedPreferences prefs;
+
     int dp(int n){return (int)(n*getResources().getDisplayMetrics().density+.5f);}
     GradientDrawable box(int c,int r){GradientDrawable g=new GradientDrawable();g.setColor(c);g.setCornerRadius(dp(r));return g;}
     TextView text(String s,float z,int c){TextView t=new TextView(this);t.setText(s);t.setTextSize(z);t.setTextColor(c);t.setGravity(Gravity.CENTER_VERTICAL);return t;}
     Button button(String s,int c){Button b=new Button(this);b.setText(s);b.setTextColor(Color.WHITE);b.setTextSize(13);b.setAllCaps(false);b.setBackground(box(c,18));return b;}
-    @Override public void onCreate(Bundle b){super.onCreate(b);prefs=getSharedPreferences("server",MODE_PRIVATE);build();refresh();new Handler().postDelayed(new Runnable(){public void run(){refresh();new Handler().postDelayed(this,1000);}},1000);if(Build.VERSION.SDK_INT>=33&&checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)!=PackageManager.PERMISSION_GRANTED)requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS},5);}
-    void build(){
-        LinearLayout root=new LinearLayout(this);root.setOrientation(LinearLayout.VERTICAL);root.setBackgroundColor(Color.rgb(9,12,20));
-        LinearLayout head=new LinearLayout(this);head.setPadding(dp(16),dp(12),dp(12),dp(10));head.setGravity(Gravity.CENTER_VERTICAL);head.setBackground(box(Color.rgb(15,18,30),0));
-        TextView logo=text("◈",32,GREEN);head.addView(logo,new LinearLayout.LayoutParams(dp(48),dp(54)));
-        LinearLayout tt=new LinearLayout(this);tt.setOrientation(LinearLayout.VERTICAL);tt.addView(text("Salam SIP Server",21,Color.WHITE));tt.addView(text("VERSION 10 • LOCAL HTTP SERVER",10,Color.LTGRAY));head.addView(tt,new LinearLayout.LayoutParams(0,dp(55),1));
-        Button set=button("⚙ Settings",Color.rgb(50,55,75));set.setOnClickListener(v->settings());head.addView(set,new LinearLayout.LayoutParams(dp(105),dp(48)));root.addView(head,new LinearLayout.LayoutParams(-1,dp(76)));
-        ScrollView sv=new ScrollView(this);content=new LinearLayout(this);content.setOrientation(LinearLayout.VERTICAL);content.setPadding(dp(14),dp(12),dp(14),dp(30));sv.addView(content);root.addView(sv,new LinearLayout.LayoutParams(-1,0,1));setContentView(root);
-        LinearLayout hero=card();status=text("● OFFLINE",15,Color.RED);hero.addView(status);url=text(WebServerService.currentUrl(this),13,Color.WHITE);url.setPadding(dp(12),dp(9),dp(12),dp(9));url.setBackground(box(Color.rgb(10,14,23),12));hero.addView(url);
-        LinearLayout actions=new LinearLayout(this);Button start=button("▶ START",Color.rgb(22,130,85));Button stop=button("■ STOP",Color.rgb(150,52,72));Button open=button("🌐 OPEN",PURPLE);start.setOnClickListener(v->service("START"));stop.setOnClickListener(v->service("STOP"));open.setOnClickListener(v->openAdmin());actions.addView(start,new LinearLayout.LayoutParams(0,dp(50),1));actions.addView(stop,new LinearLayout.LayoutParams(0,dp(50),1));actions.addView(open,new LinearLayout.LayoutParams(0,dp(50),1));hero.addView(actions);content.addView(hero);
-        stats=text("",14,Color.WHITE);stats.setPadding(dp(14),dp(14),dp(14),dp(14));stats.setBackground(box(Color.rgb(21,26,39),18));content.addView(stats,new LinearLayout.LayoutParams(-1,dp(92)));
-        section("🧰 SERVER CONTROL"); row("📊","Dashboard","Live browser dashboard with auto refresh",this::openAdmin);row("📁","Advanced File Manager","Upload, download, edit, rename, copy, move, delete",this::openAdmin);row("📦","ZIP Manager","Upload/extract ZIP safely",this::openAdmin);row("📝","File Editor","Edit HTML/CSS/JS/JSON/text files",this::openAdmin);row("📜","Request & Access History","Live logs and recent clients",this::openAdmin);
-        section("🛡️ SECURITY");row("🔐","Login & Password","Basic web authentication",this::settings);row("🟢","IP Allowlist","Permit only selected addresses",this::settings);row("🔴","IP Blocklist","Block addresses and unblock later",this::settings);row("🚦","Rate Limit","Requests per IP per minute",this::settings);row("👥","Client Limit","Maximum concurrent connections",this::settings);
-        section("🎨 THEMES");row("🌈","Theme Engine","Midnight, Ocean, Violet, Emerald, Sunset, Neon",this::theme);row("✨","Animations","Animated cards and live dashboard",this::theme);row("🔆","Server Logo / Icon","App identity and server branding",this::about);
-        section("🌐 NETWORK");row("📡","Network Interfaces","Wi-Fi/LAN interface information",this::network);row("🔗","Custom Server URL","Display alias/hostname (does not create public DNS)",this::settings);row("🔳","QR Server Sharing","Generate QR from the current LAN URL",this::qr);
-        section("⚙ SYSTEM");row("🔔","Background Server","Foreground service + status notification",this::about);row("💾","CPU / RAM / Storage","Live device/server metrics",this::openAdmin);row("👨‍💻","Developer","Abdus Salam • 09696590864 • salam230864@gmail.com",this::about);row("💬","Messenger","Open developer Messenger",()->startActivity(new Intent(Intent.ACTION_VIEW,Uri.parse("https://m.me/Salam.864"))));
-        section("🚀 FUTURE MODULE CENTER");String[] fs={"🧩 Server profiles","🧩 Multiple web roots","🧩 Redirect rules","🧩 MIME manager","🧩 Custom 403/404","🧩 Maintenance mode","🧩 Security headers","🧩 CORS control","🧩 Cache control","🧩 Compression","🧩 Configuration backup/restore","🧩 Traffic statistics","🧩 Health check","🧩 Heartbeat API","🧩 Plugin-ready modules","🧩 API testing tools"};for(String x:fs)row(x.substring(0,2),x.substring(2).trim(),"Module slot reserved in Version 10 architecture",this::about);
-        logo.startAnimation(new AlphaAnimation(.45f,1f){{setDuration(1000);setRepeatMode(Animation.REVERSE);setRepeatCount(Animation.INFINITE);}});
+
+    @Override
+    public void onCreate(Bundle b){
+        super.onCreate(b);
+        prefs=getSharedPreferences("server",MODE_PRIVATE);
+        build();
+        refresh();
+        new Handler().postDelayed(new Runnable(){
+            public void run(){
+                refresh();
+                new Handler().postDelayed(this,1000);
+            }
+        },1000);
+        if(Build.VERSION.SDK_INT>=33 &&
+           checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)!=PackageManager.PERMISSION_GRANTED){
+            requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS},5);
+        }
     }
-    LinearLayout card(){LinearLayout c=new LinearLayout(this);c.setOrientation(LinearLayout.VERTICAL);c.setPadding(dp(15),dp(14),dp(15),dp(14));c.setBackground(box(Color.rgb(21,26,39),20));LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(-1,-2);p.setMargins(0,dp(5),0,dp(8));c.setLayoutParams(p);return c;}
-    void section(String s){TextView t=text(s,12,Color.rgb(165,172,195));t.setTypeface(null,1);t.setPadding(dp(5),dp(13),dp(5),dp(5));content.addView(t);}
-    void row(String icon,String title,String desc,final Runnable r){LinearLayout c=card();c.setOrientation(LinearLayout.HORIZONTAL);TextView i=text(icon,23,Color.WHITE);i.setGravity(Gravity.CENTER);c.addView(i,new LinearLayout.LayoutParams(dp(46),dp(58)));LinearLayout x=new LinearLayout(this);x.setOrientation(LinearLayout.VERTICAL);x.addView(text(title,14,Color.WHITE));x.addView(text(desc,11,Color.LTGRAY));c.addView(x,new LinearLayout.LayoutParams(0,dp(58),1));TextView go=text("›",28,GREEN);go.setGravity(Gravity.CENTER);c.addView(go,new LinearLayout.LayoutParams(dp(28),dp(58)));c.setOnClickListener(v->r.run());content.addView(c);}
-    void service(String a){Intent i=new Intent(this,WebServerService.class);i.setAction(a);if(Build.VERSION.SDK_INT>=26&&"START".equals(a))startForegroundService(i);else startService(i);}
-    void refresh(){if(status==null)return;boolean r=WebServerService.isRunning();status.setText(r?"● SERVER ONLINE":"● SERVER OFFLINE");status.setTextColor(r?GREEN:Color.RED);url.setText(WebServerService.currentUrl(this));stats.setText("📈 Requests: "+WebServerService.getRequestCount()+"    👥 Clients: "+WebServerService.getClientCount()+"\n⏱ Uptime: "+WebServerService.uptime()+"    💾 "+WebServerService.memoryText(this));}
-    void openAdmin(){if(!WebServerService.isRunning()){Toast.makeText(this,"Start server first",Toast.LENGTH_SHORT).show();return;}startActivity(new Intent(Intent.ACTION_VIEW,Uri.parse(WebServerService.currentUrl(this)+"/__admin")));}
-    void settings(){final LinearLayout l=new LinearLayout(this);l.setOrientation(LinearLayout.VERTICAL);l.setPadding(dp(18),dp(8),dp(18),0);EditText port=e("Port",String.valueOf(prefs.getInt("port",8080)));EditText pass=e("Web password (blank = off)",prefs.getString("password",""));EditText allow=e("Allowlist IPs (comma separated)",prefs.getString("allowIps",""));EditText block=e("Blocklist IPs (comma separated)",prefs.getString("blockIps",""));EditText rate=e("Rate limit per IP/minute",String.valueOf(prefs.getInt("rate",120)));EditText max=e("Max clients",String.valueOf(prefs.getInt("maxClients",32)));Switch only=new Switch(this);only.setText("🟢 Enforce allowlist");only.setTextColor(Color.WHITE);only.setChecked(prefs.getBoolean("allowOnly",false));for(EditText q:new EditText[]{port,pass,allow,block,rate,max}){q.setTextColor(Color.WHITE);q.setHintTextColor(Color.GRAY);l.addView(q); }l.addView(only);new AlertDialog.Builder(this).setTitle("⚙ Advanced Server Settings").setView(l).setPositiveButton("SAVE",(d,w)->{try{prefs.edit().putInt("port",Integer.parseInt(port.getText().toString())).putString("password",pass.getText().toString()).putString("allowIps",allow.getText().toString()).putString("blockIps",block.getText().toString()).putBoolean("allowOnly",only.isChecked()).putInt("rate",Math.max(1,Integer.parseInt(rate.getText().toString()))).putInt("maxClients",Math.max(1,Integer.parseInt(max.getText().toString()))).apply();Toast.makeText(this,"Saved. Restart server to apply port changes.",Toast.LENGTH_LONG).show();}catch(Exception ex){Toast.makeText(this,"Invalid settings",Toast.LENGTH_SHORT).show();}}).setNegativeButton("CANCEL",null).show();}
-    EditText e(String hint,String value){EditText e=new EditText(this);e.setHint(hint);e.setText(value);e.setSingleLine(false);return e;}
-    void theme(){String[] a={"🌑 Midnight","🌊 Ocean","💜 Violet","💚 Emerald","🌅 Sunset","⚡ Neon"};new AlertDialog.Builder(this).setTitle("🌈 Theme Engine").setItems(a,(d,w)->prefs.edit().putString("theme",a[w]).apply()).show();}
-    void network(){new AlertDialog.Builder(this).setTitle("🌐 Network Interfaces").setMessage(WebServerService.networkInfo(this)).setPositiveButton("OK",null).show();}
-    void qr(){try{BarcodeEncoder e=new BarcodeEncoder();Bitmap b=e.encodeBitmap(WebServerService.currentUrl(this),BarcodeFormat.QR_CODE,700,700);ImageView iv=new ImageView(this);iv.setImageBitmap(b);iv.setPadding(dp(20),dp(20),dp(20),dp(20));new AlertDialog.Builder(this).setTitle("📱 Scan to open server").setView(iv).setPositiveButton("OK",null).show();}catch(Exception ex){Toast.makeText(this,"QR error",Toast.LENGTH_SHORT).show();}}
-    void about(){new AlertDialog.Builder(this).setTitle("👨‍💻 Salam SIP Server v10").setMessage("Local HTTP server + browser control center\n\nDeveloper: Abdus Salam\nPhone: 09696590864\nEmail: salam230864@gmail.com\nMessenger: m.me/Salam.864\n\nCustom URL is a configurable alias/display value; a real public domain requires DNS/tunnel infrastructure.").setPositiveButton("OK",null).show();}
+
+    void build(){
+        LinearLayout root=new LinearLayout(this);
+        root.setOrientation(LinearLayout.VERTICAL);
+        root.setBackgroundColor(Color.rgb(9,12,20));
+
+        LinearLayout head=new LinearLayout(this);
+        head.setPadding(dp(16),dp(12),dp(12),dp(10));
+        head.setGravity(Gravity.CENTER_VERTICAL);
+        head.setBackground(box(Color.rgb(15,18,30),0));
+
+        TextView logo=text("◈",32,GREEN);
+        head.addView(logo,new LinearLayout.LayoutParams(dp(48),dp(54)));
+
+        LinearLayout tt=new LinearLayout(this);
+        tt.setOrientation(LinearLayout.VERTICAL);
+        tt.addView(text("Salam SIP Server",21,Color.WHITE));
+        tt.addView(text("VERSION 10 • LOCAL HTTP SERVER",10,Color.LTGRAY));
+        head.addView(tt,new LinearLayout.LayoutParams(0,dp(55),1));
+
+        Button set=button("⚙ Settings",Color.rgb(50,55,75));
+        set.setOnClickListener(v->settings());
+        head.addView(set,new LinearLayout.LayoutParams(dp(105),dp(48)));
+        root.addView(head,new LinearLayout.LayoutParams(-1,dp(76)));
+
+        ScrollView sv=new ScrollView(this);
+        content=new LinearLayout(this);
+        content.setOrientation(LinearLayout.VERTICAL);
+        content.setPadding(dp(14),dp(12),dp(14),dp(30));
+        sv.addView(content);
+        root.addView(sv,new LinearLayout.LayoutParams(-1,0,1));
+        setContentView(root);
+
+        LinearLayout hero=card();
+        status=text("● OFFLINE",15,Color.RED);
+        hero.addView(status);
+
+        url=text(WebServerService.currentUrl(this),13,Color.WHITE);
+        url.setPadding(dp(12),dp(9),dp(12),dp(9));
+        url.setBackground(box(Color.rgb(10,14,23),12));
+        hero.addView(url);
+
+        LinearLayout actions=new LinearLayout(this);
+        Button start=button("▶ START",Color.rgb(22,130,85));
+        Button stop=button("■ STOP",Color.rgb(150,52,72));
+        Button open=button("🌐 OPEN",PURPLE);
+        start.setOnClickListener(v->service("START"));
+        stop.setOnClickListener(v->service("STOP"));
+        open.setOnClickListener(v->openAdmin());
+        actions.addView(start,new LinearLayout.LayoutParams(0,dp(50),1));
+        actions.addView(stop,new LinearLayout.LayoutParams(0,dp(50),1));
+        actions.addView(open,new LinearLayout.LayoutParams(0,dp(50),1));
+        hero.addView(actions);
+        content.addView(hero);
+
+        stats=text("",14,Color.WHITE);
+        stats.setPadding(dp(14),dp(14),dp(14),dp(14));
+        stats.setBackground(box(Color.rgb(21,26,39),18));
+        content.addView(stats,new LinearLayout.LayoutParams(-1,dp(92)));
+
+        section("🧰 SERVER CONTROL");
+        row("📊","Dashboard","Live browser dashboard with auto refresh",this::openAdmin);
+        row("📁","Advanced File Manager","Upload, download, edit, rename, copy, move, delete",this::openAdmin);
+        row("📦","ZIP Manager","Upload/extract ZIP safely",this::openAdmin);
+        row("📝","File Editor","Edit HTML/CSS/JS/JSON/text files",this::openAdmin);
+        row("📜","Request & Access History","Live logs and recent clients",this::openAdmin);
+
+        section("🛡️ SECURITY");
+        row("🔐","Login & Password","Basic web authentication",this::settings);
+        row("🟢","IP Allowlist","Permit only selected addresses",this::settings);
+        row("🔴","IP Blocklist","Block addresses and unblock later",this::settings);
+        row("🚦","Rate Limit","Requests per IP per minute",this::settings);
+        row("👥","Client Limit","Maximum concurrent connections",this::settings);
+
+        section("🎨 THEMES");
+        row("🌈","Theme Engine","Midnight, Ocean, Violet, Emerald, Sunset, Neon",this::theme);
+        row("✨","Animations","Animated cards and live dashboard",this::theme);
+        row("🔆","Server Logo / Icon","App identity and server branding",this::about);
+
+        section("🌐 NETWORK");
+        row("📡","Network Interfaces","Wi-Fi/LAN interface information",this::network);
+        row("🔗","Custom Server URL","Display alias/hostname (does not create public DNS)",this::settings);
+        row("🔳","QR Server Sharing","Generate QR from the current LAN URL",this::qr);
+
+        section("⚙ SYSTEM");
+        row("🔔","Background Server","Foreground service + status notification",this::about);
+        row("💾","CPU / RAM / Storage","Live device/server metrics",this::openAdmin);
+        row("👨‍💻","Developer","Abdus Salam • 09696590864 • salam230864@gmail.com",this::about);
+        row("💬","Messenger","Open developer Messenger",()->startActivity(new Intent(Intent.ACTION_VIEW,Uri.parse("https://m.me/Salam.864"))));
+
+        section("🚀 FUTURE MODULE CENTER");
+        String[] fs={
+            "🧩 Server profiles","🧩 Multiple web roots","🧩 Redirect rules","🧩 MIME manager",
+            "🧩 Custom 403/404","🧩 Maintenance mode","🧩 Security headers","🧩 CORS control",
+            "🧩 Cache control","🧩 Compression","🧩 Configuration backup/restore",
+            "🧩 Traffic statistics","🧩 Health check","🧩 Heartbeat API",
+            "🧩 Plugin-ready modules","🧩 API testing tools"
+        };
+        for(String x:fs)
+            row(x.substring(0,2),x.substring(2).trim(),"Module slot reserved in Version 10 architecture",this::about);
+
+        logo.startAnimation(new AlphaAnimation(.45f,1f){{
+            setDuration(1000);
+            setRepeatMode(Animation.REVERSE);
+            setRepeatCount(Animation.INFINITE);
+        }});
+    }
+
+    LinearLayout card(){
+        LinearLayout c=new LinearLayout(this);
+        c.setOrientation(LinearLayout.VERTICAL);
+        c.setPadding(dp(15),dp(14),dp(15),dp(14));
+        c.setBackground(box(Color.rgb(21,26,39),20));
+        LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(-1,-2);
+        p.setMargins(0,dp(5),0,dp(8));
+        c.setLayoutParams(p);
+        return c;
+    }
+
+    void section(String s){
+        TextView t=text(s,12,Color.rgb(165,172,195));
+        t.setTypeface(null,1);
+        t.setPadding(dp(5),dp(13),dp(5),dp(5));
+        content.addView(t);
+    }
+
+    void row(String icon,String title,String desc,final Runnable r){
+        LinearLayout c=card();
+        c.setOrientation(LinearLayout.HORIZONTAL);
+        TextView i=text(icon,23,Color.WHITE);
+        i.setGravity(Gravity.CENTER);
+        c.addView(i,new LinearLayout.LayoutParams(dp(46),dp(58)));
+
+        LinearLayout x=new LinearLayout(this);
+        x.setOrientation(LinearLayout.VERTICAL);
+        x.addView(text(title,14,Color.WHITE));
+        x.addView(text(desc,11,Color.LTGRAY));
+        c.addView(x,new LinearLayout.LayoutParams(0,dp(58),1));
+
+        TextView go=text("›",28,GREEN);
+        go.setGravity(Gravity.CENTER);
+        c.addView(go,new LinearLayout.LayoutParams(dp(28),dp(58)));
+        c.setOnClickListener(v->r.run());
+        content.addView(c);
+    }
+
+    void service(String a){
+        Intent i=new Intent(this,WebServerService.class);
+        i.setAction(a);
+        if(Build.VERSION.SDK_INT>=26&&"START".equals(a))
+            startForegroundService(i);
+        else
+            startService(i);
+    }
+
+    void refresh(){
+        if(status==null)return;
+        boolean r=WebServerService.isRunning();
+        status.setText(r?"● SERVER ONLINE":"● SERVER OFFLINE");
+        status.setTextColor(r?GREEN:Color.RED);
+        url.setText(WebServerService.currentUrl(this));
+        stats.setText("📈 Requests: "+WebServerService.getRequestCount()+
+                "    👥 Clients: "+WebServerService.getClientCount()+
+                "\n⏱ Uptime: "+WebServerService.uptime()+
+                "    💾 "+WebServerService.memoryText(this));
+    }
+
+    void openAdmin(){
+        if(!WebServerService.isRunning()){
+            Toast.makeText(this,"Start server first",Toast.LENGTH_SHORT).show();
+            return;
+        }
+        startActivity(new Intent(Intent.ACTION_VIEW,
+                Uri.parse(WebServerService.currentUrl(this)+"/__admin")));
+    }
+
+    void settings(){
+        final LinearLayout l=new LinearLayout(this);
+        l.setOrientation(LinearLayout.VERTICAL);
+        l.setPadding(dp(18),dp(8),dp(18),0);
+
+        EditText port=e("Port",String.valueOf(prefs.getInt("port",8080)));
+        EditText pass=e("Web password (blank = off)",prefs.getString("password",""));
+        EditText allow=e("Allowlist IPs (comma separated)",prefs.getString("allowIps",""));
+        EditText block=e("Blocklist IPs (comma separated)",prefs.getString("blockIps",""));
+        EditText rate=e("Rate limit per IP/minute",String.valueOf(prefs.getInt("rate",120)));
+        EditText max=e("Max clients",String.valueOf(prefs.getInt("maxClients",32)));
+
+        Switch only=new Switch(this);
+        only.setText("🟢 Enforce allowlist");
+        only.setTextColor(Color.WHITE);
+        only.setChecked(prefs.getBoolean("allowOnly",false));
+
+        for(EditText q:new EditText[]{port,pass,allow,block,rate,max}){
+            q.setTextColor(Color.WHITE);
+            q.setHintTextColor(Color.GRAY);
+            l.addView(q);
+        }
+        l.addView(only);
+
+        new AlertDialog.Builder(this)
+            .setTitle("⚙ Advanced Server Settings")
+            .setView(l)
+            .setPositiveButton("SAVE",(d,w)->{
+                try{
+                    prefs.edit()
+                        .putInt("port",Integer.parseInt(port.getText().toString()))
+                        .putString("password",pass.getText().toString())
+                        .putString("allowIps",allow.getText().toString())
+                        .putString("blockIps",block.getText().toString())
+                        .putBoolean("allowOnly",only.isChecked())
+                        .putInt("rate",Math.max(1,Integer.parseInt(rate.getText().toString())))
+                        .putInt("maxClients",Math.max(1,Integer.parseInt(max.getText().toString())))
+                        .apply();
+
+                    Toast.makeText(this,
+                            "Saved.\nRestart server to apply port changes.",
+                            Toast.LENGTH_LONG).show();
+                }catch(Exception ex){
+                    Toast.makeText(this,"Invalid settings",Toast.LENGTH_SHORT).show();
+                }
+            })
+            .setNegativeButton("CANCEL",null)
+            .show();
+    }
+
+    EditText e(String hint,String value){
+        EditText e=new EditText(this);
+        e.setHint(hint);
+        e.setText(value);
+        e.setSingleLine(false);
+        return e;
+    }
+
+    void theme(){
+        String[] a={"🌑 Midnight","🌊 Ocean","💜 Violet","💚 Emerald","🌅 Sunset","⚡ Neon"};
+        new AlertDialog.Builder(this)
+            .setTitle("🌈 Theme Engine")
+            .setItems(a,(d,w)->prefs.edit().putString("theme",a[w]).apply())
+            .show();
+    }
+
+    void network(){
+        new AlertDialog.Builder(this)
+            .setTitle("🌐 Network Interfaces")
+            .setMessage(WebServerService.networkInfo(this))
+            .setPositiveButton("OK",null)
+            .show();
+    }
+
+    void qr(){
+        try{
+            BarcodeEncoder e=new BarcodeEncoder();
+            Bitmap b=e.encodeBitmap(
+                WebServerService.currentUrl(this),
+                BarcodeFormat.QR_CODE,700,700
+            );
+            ImageView iv=new ImageView(this);
+            iv.setImageBitmap(b);
+            iv.setPadding(dp(20),dp(20),dp(20),dp(20));
+            new AlertDialog.Builder(this)
+                .setTitle("📱 Scan to open server")
+                .setView(iv)
+                .setPositiveButton("OK",null)
+                .show();
+        }catch(Exception ex){
+            Toast.makeText(this,"QR error",Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    void about(){
+        new AlertDialog.Builder(this)
+            .setTitle("👨‍💻 Salam SIP Server v10")
+            .setMessage("Local HTTP server + browser control center\n\n"+
+                    "Developer: Abdus Salam\n"+
+                    "Phone: 09696590864\n"+
+                    "Email: salam230864@gmail.com\n"+
+                    "Messenger: m.me/Salam.864\n\n"+
+                    "Custom URL is a configurable alias/display value; a real public domain requires DNS/tunnel infrastructure.")
+            .setPositiveButton("OK",null)
+            .show();
+    }
 }
