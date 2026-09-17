@@ -14,12 +14,17 @@ jobs:
 
     steps:
 
-      # =========================================================
-      # CHECK PREINSTALLED ANDROID SDK
-      # =========================================================
+      # ==========================================
+      # CHECKOUT
+      # ==========================================
 
       - name: Checkout
         uses: actions/checkout@v4
+
+
+      # ==========================================
+      # JAVA 17
+      # ==========================================
 
       - name: Setup Java 17
         uses: actions/setup-java@v4
@@ -27,56 +32,56 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Prepare Android SDK
+
+      # ==========================================
+      # ANDROID SDK
+      # ==========================================
+
+      - name: Check Android SDK
         shell: bash
         run: |
-          set -e
+          echo "Android SDK:"
+          echo "$ANDROID_HOME"
 
-          echo "ANDROID_HOME=$ANDROID_HOME"
-          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT"
-
-          export PATH="$ANDROID_HOME/platform-tools:$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/cmdline-tools/12.0/bin:$ANDROID_HOME/tools/bin:$PATH"
-
-          echo "Checking SDK..."
+          echo ""
+          echo "SDK folders:"
           ls -la "$ANDROID_HOME" || true
-          ls -la "$ANDROID_HOME/cmdline-tools" || true
 
-          echo "Checking sdkmanager..."
-          if [ -x "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" ]; then
-            SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
-          elif [ -x "$ANDROID_HOME/cmdline-tools/12.0/bin/sdkmanager" ]; then
-            SDKMANAGER="$ANDROID_HOME/cmdline-tools/12.0/bin/sdkmanager"
-          else
-            SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -name sdkmanager -type f | head -n 1)"
-          fi
+          echo ""
+          echo "Platforms:"
+          ls -la "$ANDROID_HOME/platforms" || true
 
-          echo "Using sdkmanager: $SDKMANAGER"
+          echo ""
+          echo "Build Tools:"
+          ls -la "$ANDROID_HOME/build-tools" || true
 
-          if [ -z "$SDKMANAGER" ]; then
-            echo "ERROR: sdkmanager not found"
-            exit 1
-          fi
+          echo ""
+          echo "Platform Tools:"
+          ls -la "$ANDROID_HOME/platform-tools" || true
 
-          chmod +x "$SDKMANAGER"
+          echo ""
+          echo "Android SDK is ready."
 
-          echo "Accepting licenses..."
-          yes | "$SDKMANAGER" --licenses > /dev/null || true
 
-          echo "Android SDK ready."
-
-      # =========================================================
-      # GRADLE BUILD
-      # =========================================================
+      # ==========================================
+      # GRADLE
+      # ==========================================
 
       - name: Make Gradle executable
-        run: chmod +x gradlew
+        run: chmod +x ./gradlew
+
+
+      # ==========================================
+      # BUILD
+      # ==========================================
 
       - name: Build APK
         run: ./gradlew assembleDebug --no-daemon
 
-      # =========================================================
-      # UPLOAD APK
-      # =========================================================
+
+      # ==========================================
+      # APK ARTIFACT
+      # ==========================================
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
