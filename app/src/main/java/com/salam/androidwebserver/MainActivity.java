@@ -196,6 +196,6 @@ public class MainActivity extends Activity {
     static class Wave extends View{
         Paint p=new Paint(Paint.ANTI_ALIAS_FLAG);Path path=new Path();
         Wave(Context c){super(c);}
-        protected void onDraw(Canvas c){int w=getWidth(),h=getHeight();LinearGradient g=new LinearGradient(0,0,w,h,Color.rgb(3,12,25),Color.rgb(7,27,51),Shader.TileMode.CLAMP);p.setShader(g);c.drawRect(0,0,w,h,p);p.setShader(null);p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(2);p.setColor(Color.rgb(10,102,225));for(int j=0;j<3;j++){path.reset();for(int x=0;x<=w;x+=10){float y=h*.70f+j*dp(18)+(float)Math.sin(x*.013+j)*dp(19);if(x==0)path.moveTo(x,y);else path.lineTo(x,y);}c.drawPath(path,p);}p.setStyle(Paint.Style.FILL);}
+        protected void onDraw(Canvas c){int w=getWidth(),h=getHeight();LinearGradient g=new LinearGradient(0,0,w,h,Color.rgb(3,12,25),Color.rgb(7,27,51),Shader.TileMode.CLAMP);p.setShader(g);c.drawRect(0,0,w,h,p);p.setShader(null);p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(2);p.setColor(Color.rgb(10,102,225));for(int j=0;j<3;j++){path.reset();for(int x=0;x<=w;x+=10){float y=h*.70f+j*getResources().getDisplayMetrics().density*18f+(float)Math.sin(x*.013+j)*getResources().getDisplayMetrics().density*19f;if(x==0)path.moveTo(x,y);else path.lineTo(x,y);}c.drawPath(path,p);}p.setStyle(Paint.Style.FILL);}
     }
 }
