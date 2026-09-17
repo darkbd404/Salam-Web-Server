@@ -1,4 +1,4 @@
-package com.salam.androidserver;
+package com.salam.androidwebserver;
 
 import android.app.*;
 import android.content.*;
