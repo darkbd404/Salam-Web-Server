@@ -1,93 +1,201 @@
 package com.salam.androidwebserver;
 
+import android.Manifest;
 import android.app.*;
 import android.content.*;
+import android.content.pm.PackageManager;
 import android.graphics.*;
 import android.graphics.drawable.GradientDrawable;
-import android.net.Uri;
+import android.net.*;
 import android.os.*;
+import android.provider.Settings;
 import android.view.*;
 import android.widget.*;
 import java.io.*;
 import java.util.*;
-import java.util.zip.*;
-import com.google.zxing.*;
-import com.google.zxing.common.BitMatrix;
-import com.google.zxing.qrcode.QRCodeWriter;
 
 public class MainActivity extends Activity {
-    private static final int BG=Color.rgb(5,10,20), CARD=Color.rgb(13,24,42);
-    private LinearLayout root,body,bottom;
-    private TextView title,status,url,metrics;
-    private SharedPreferences prefs;
-    private Handler handler=new Handler(Looper.getMainLooper());
-    private int screen=0,accent;
-    private File currentDir,downloadFile;
+    static final int BG=Color.rgb(5,14,28), CARD=Color.rgb(9,24,44), CARD2=Color.rgb(13,34,60);
+    static final int BLUE=Color.rgb(20,135,255), CYAN=Color.rgb(31,211,255), GREEN=Color.rgb(23,231,164);
+    static final int WHITE=Color.rgb(247,250,255), MUTED=Color.rgb(166,190,218);
+    SharedPreferences pref;
+    LinearLayout content, bottom;
+    TextView pageTitle, homeStatus, homeUrl, homeStats;
+    Handler handler=new Handler(Looper.getMainLooper());
+    int page=0;
+    String folder="/";
 
-    int dp(int n){return (int)(n*getResources().getDisplayMetrics().density+.5f);}
-    int themeColor(int x){return new int[]{Color.rgb(25,130,255),Color.rgb(0,185,255),Color.rgb(150,90,255),Color.rgb(20,210,150),Color.rgb(255,110,70),Color.rgb(255,30,190)}[Math.max(0,Math.min(5,x))];}
-    GradientDrawable bg(int color,int r){GradientDrawable g=new GradientDrawable();g.setColor(color);g.setCornerRadius(dp(r));return g;}
-    GradientDrawable grad(int a,int b,int r){GradientDrawable g=new GradientDrawable(GradientDrawable.Orientation.TL_BR,new int[]{a,b});g.setCornerRadius(dp(r));return g;}
-    TextView tv(String s,float z,int c){TextView t=new TextView(this);t.setText(s);t.setTextSize(z);t.setTextColor(c);t.setPadding(dp(4),dp(3),dp(4),dp(3));return t;}
-    LinearLayout box(){LinearLayout l=new LinearLayout(this);l.setOrientation(LinearLayout.VERTICAL);l.setPadding(dp(16),dp(14),dp(16),dp(14));l.setBackground(bg(CARD,20));LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(-1,-2);p.setMargins(0,dp(5),0,dp(7));l.setLayoutParams(p);return l;}
-    Button btn(String s){Button b=new Button(this);b.setText(s);b.setTextColor(Color.WHITE);b.setTextSize(13);b.setAllCaps(false);b.setBackground(grad(accent,Color.rgb(0,190,255),16));return b;}
-    void toast(String s){Toast.makeText(this,s,Toast.LENGTH_SHORT).show();}
+    int dp(float n){return (int)(n*getResources().getDisplayMetrics().density+0.5f);}
+    TextView text(String s,float size,int color){TextView t=new TextView(this);t.setText(s);t.setTextSize(size);t.setTextColor(color);return t;}
+    GradientDrawable grad(int a,int b,float radius){GradientDrawable g=new GradientDrawable(GradientDrawable.Orientation.TL_BR,new int[]{a,b});g.setCornerRadius(dp(radius));return g;}
+    LinearLayout card(){LinearLayout c=new LinearLayout(this);c.setOrientation(LinearLayout.VERTICAL);c.setPadding(dp(15),dp(13),dp(15),dp(13));c.setBackground(grad(CARD,CARD2,18));LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(-1,-2);p.setMargins(0,dp(5),0,dp(5));c.setLayoutParams(p);return c;}
+    Button blueButton(String s){Button b=new Button(this);b.setText(s);b.setTextColor(WHITE);b.setTextSize(13);b.setAllCaps(false);b.setBackground(grad(BLUE,CYAN,15));return b;}
+    void add(ViewGroup p,View v,int w,int h){p.addView(v,new LinearLayout.LayoutParams(w,dp(h)));}
 
-    @Override protected void onCreate(Bundle b){super.onCreate(b);prefs=getSharedPreferences("server",MODE_PRIVATE);accent=themeColor(prefs.getInt("theme",0));currentDir=WebServerService.webRoot(this);buildShell();showHome();if(Build.VERSION.SDK_INT>=33)requestPermissions(new String[]{"android.permission.POST_NOTIFICATIONS"},700);handler.postDelayed(new Runnable(){public void run(){refresh();handler.postDelayed(this,1500);}},500);}
-
-    void buildShell(){
-        root=new LinearLayout(this);root.setOrientation(LinearLayout.VERTICAL);root.setBackground(grad(Color.rgb(4,12,25),BG,0));setContentView(root);
-        LinearLayout head=new LinearLayout(this);head.setGravity(Gravity.CENTER_VERTICAL);head.setPadding(dp(12),dp(8),dp(8),dp(7));
-        TextView menu=tv("☰",28,Color.WHITE);menu.setGravity(Gravity.CENTER);head.addView(menu,new LinearLayout.LayoutParams(dp(45),dp(58)));
-        LinearLayout names=new LinearLayout(this);names.setOrientation(LinearLayout.VERTICAL);title=tv("Salam-Web-Server",20,Color.WHITE);names.addView(title);names.addView(tv("Local Web Server • Native Android",10,Color.LTGRAY));head.addView(names,new LinearLayout.LayoutParams(0,dp(58),1));
-        status=tv("● OFFLINE",11,Color.RED);status.setGravity(Gravity.CENTER);status.setBackground(bg(Color.rgb(30,35,48),14));head.addView(status,new LinearLayout.LayoutParams(dp(88),dp(36)));root.addView(head,new LinearLayout.LayoutParams(-1,dp(72)));menu.setOnClickListener(v->about());
-        body=new LinearLayout(this);body.setOrientation(LinearLayout.VERTICAL);ScrollView sc=new ScrollView(this);sc.addView(body);root.addView(sc,new LinearLayout.LayoutParams(-1,0,1));
-        bottom=new LinearLayout(this);bottom.setPadding(dp(5),dp(5),dp(5),dp(7));bottom.setBackground(bg(Color.rgb(8,15,27),0));root.addView(bottom,new LinearLayout.LayoutParams(-1,dp(68)));
-        nav("⌂","Home",0);nav("▣","Files",1);nav("≡","Logs",2);nav("⚙","Settings",3);
+    @Override public void onCreate(Bundle state){
+        super.onCreate(state);
+        getWindow().setStatusBarColor(BG); getWindow().setNavigationBarColor(BG);
+        pref=getSharedPreferences("server",MODE_PRIVATE);
+        if(Build.VERSION.SDK_INT>=33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)!=PackageManager.PERMISSION_GRANTED)
+            requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS},50);
+        splash();
     }
-    void nav(String icon,String name,int index){Button b=btn(icon+"\n"+name);b.setTextSize(11);b.setBackgroundColor(Color.TRANSPARENT);b.setOnClickListener(v->{screen=index;if(index==0)showHome();else if(index==1)showFiles();else if(index==2)showLogs();else showSettings();});bottom.addView(b,new LinearLayout.LayoutParams(0,-1,1));}
-    void reset(){body.removeAllViews();body.setPadding(dp(12),dp(5),dp(12),dp(24));}
 
-    void showHome(){reset();LinearLayout hero=box();hero.setBackground(grad(Color.rgb(7,32,62),Color.rgb(10,16,30),22));TextView logo=tv("🖥️",46,Color.WHITE);logo.setGravity(Gravity.CENTER);hero.addView(logo);TextView h=tv("Salam-Web-Server",25,Color.WHITE);h.setGravity(Gravity.CENTER);hero.addView(h);TextView s=tv("Fast • Secure • Local • Native Android",12,Color.LTGRAY);s.setGravity(Gravity.CENTER);hero.addView(s);
-        status.setText(WebServerService.isRunning()?"● RUNNING":"● OFFLINE");status.setTextColor(WebServerService.isRunning()?Color.rgb(30,240,150):Color.RED);url=tv(WebServerService.currentUrl(this),14,Color.WHITE);url.setGravity(Gravity.CENTER);url.setPadding(dp(12),dp(12),dp(12),dp(12));url.setBackground(bg(Color.rgb(7,17,31),14));hero.addView(url);
-        LinearLayout actions=new LinearLayout(this);Button start=btn("▶ Start"),stop=btn("■ Stop"),copy=btn("▣ Copy URL");start.setOnClickListener(v->server("START"));stop.setOnClickListener(v->server("STOP"));copy.setOnClickListener(v->copy(WebServerService.currentUrl(this)));actions.addView(start,new LinearLayout.LayoutParams(0,dp(50),1));actions.addView(stop,new LinearLayout.LayoutParams(0,dp(50),1));actions.addView(copy,new LinearLayout.LayoutParams(0,dp(50),1));hero.addView(actions);body.addView(hero);
-        metrics=tv("Loading live metrics…",13,Color.WHITE);metrics.setPadding(dp(14),dp(14),dp(14),dp(14));metrics.setBackground(bg(CARD,18));body.addView(metrics);
-        cardButton("📁","Manage Web Files","Native file manager — no browser",()->{screen=1;showFiles();});cardButton("📊","Server Dashboard","Live status, requests, clients and device metrics",this::showHome);cardButton("🌐","Open Website","Only this button opens the server in a browser",()->openUrl(WebServerService.currentUrl(this)));cardButton("📱","QR Server Sharing","Generate a real QR code inside the app",this::showQr);cardButton("🛡️","Security Center","Password, IP allow/block and rate limit",()->{screen=3;showSettings();});cardButton("👨‍💻","Developer","Abdus Salam • 09696590864",this::about);
+    void splash(){
+        final FrameLayout root=new FrameLayout(this);root.setBackgroundColor(BG);root.addView(new Wave(this));
+        LinearLayout c=new LinearLayout(this);c.setOrientation(LinearLayout.VERTICAL);c.setGravity(Gravity.CENTER);c.setPadding(dp(30),0,dp(30),0);
+        TextView logo=text("▰",62,CYAN);logo.setGravity(Gravity.CENTER);add(c,logo,-1,95);
+        TextView s=text("Salam",40,BLUE);s.setTypeface(null,1);s.setGravity(Gravity.CENTER);add(c,s,-1,52);
+        TextView w=text("Web Server",30,WHITE);w.setTypeface(null,1);w.setGravity(Gravity.CENTER);add(c,w,-1,45);
+        TextView sub=text("Fast  •  Secure  •  Local",14,MUTED);sub.setGravity(Gravity.CENTER);add(c,sub,-1,40);
+        TextView made=text("Made with ♥ by Salam",12,MUTED);made.setGravity(Gravity.CENTER);c.addView(made,new LinearLayout.LayoutParams(-1,0,1));
+        root.addView(c,new FrameLayout.LayoutParams(-1,-1));setContentView(root);
+        handler.postDelayed(this::app,600);
     }
-    void cardButton(String icon,String name,String desc,Runnable r){LinearLayout c=box();c.setOrientation(LinearLayout.HORIZONTAL);TextView i=tv(icon,27,Color.WHITE);i.setGravity(Gravity.CENTER);c.addView(i,new LinearLayout.LayoutParams(dp(48),dp(58)));LinearLayout x=new LinearLayout(this);x.setOrientation(LinearLayout.VERTICAL);x.addView(tv(name,15,Color.WHITE));x.addView(tv(desc,11,Color.LTGRAY));c.addView(x,new LinearLayout.LayoutParams(0,dp(58),1));TextView go=tv("›",28,accent);go.setGravity(Gravity.CENTER);c.addView(go,new LinearLayout.LayoutParams(dp(30),dp(58)));c.setOnClickListener(v->r.run());body.addView(c);}
 
-    void showFiles(){reset();LinearLayout bar=new LinearLayout(this);bar.setGravity(Gravity.CENTER_VERTICAL);Button up=btn("‹");up.setOnClickListener(v->{File r=WebServerService.webRoot(this);if(!currentDir.equals(r)){currentDir=currentDir.getParentFile();showFiles();}});bar.addView(up,new LinearLayout.LayoutParams(dp(50),dp(50)));bar.addView(tv("📁 File Manager",20,Color.WHITE),new LinearLayout.LayoutParams(0,dp(50),1));Button plus=btn("+");plus.setOnClickListener(v->addMenu());bar.addView(plus,new LinearLayout.LayoutParams(dp(55),dp(50)));body.addView(bar);TextView path=tv(currentDir.getAbsolutePath(),11,Color.LTGRAY);path.setPadding(dp(12),dp(10),dp(12),dp(10));path.setBackground(bg(Color.rgb(8,18,32),14));body.addView(path);Button upload=btn("⬆ Upload Files");upload.setOnClickListener(v->pickFiles());body.addView(upload);File[] fs=currentDir.listFiles();if(fs==null||fs.length==0){body.addView(tv("📭 Folder is empty",14,Color.LTGRAY));return;}Arrays.sort(fs,(a,b)->Boolean.compare(!a.isDirectory(),!b.isDirectory()));for(File f:fs)fileRow(f);}
-    void fileRow(File f){LinearLayout c=box();c.setOrientation(LinearLayout.HORIZONTAL);TextView i=tv(f.isDirectory()?"📂":fileIcon(f.getName()),25,Color.WHITE);i.setGravity(Gravity.CENTER);c.addView(i,new LinearLayout.LayoutParams(dp(48),dp(58)));LinearLayout x=new LinearLayout(this);x.setOrientation(LinearLayout.VERTICAL);x.addView(tv(f.getName(),14,Color.WHITE));x.addView(tv(f.isDirectory()?count(f)+" items":human(f.length()),11,Color.LTGRAY));c.addView(x,new LinearLayout.LayoutParams(0,dp(58),1));Button more=btn("⋮");more.setTextSize(22);more.setOnClickListener(v->fileMenu(f));c.addView(more,new LinearLayout.LayoutParams(dp(50),dp(58)));c.setOnClickListener(v->{if(f.isDirectory()){currentDir=f;showFiles();}else editFile(f);});body.addView(c);}
-    int count(File f){File[] x=f.listFiles();return x==null?0:x.length;}String human(long n){if(n<1024)return n+" B";if(n<1048576)return(n/1024)+" KB";if(n<1073741824L)return(n/1048576)+" MB";return String.format(Locale.US,"%.1f GB",n/1073741824.0);}String fileIcon(String n){String x=n.toLowerCase(Locale.US);if(x.endsWith(".html")||x.endsWith(".htm"))return"🌐";if(x.endsWith(".css"))return"🎨";if(x.endsWith(".js"))return"🟨";if(x.endsWith(".json"))return"🧾";if(x.endsWith(".zip"))return"📦";if(x.endsWith(".png")||x.endsWith(".jpg")||x.endsWith(".jpeg")||x.endsWith(".webp"))return"🖼️";return"📄";}
-    void addMenu(){String[] a={"📄 New File","📂 New Folder","📦 Extract ZIP"};new AlertDialog.Builder(this).setTitle("Add to Web Root").setItems(a,(d,w)->{if(w==0)newName(false);else if(w==1)newName(true);else extractZipDialog();}).show();}
-    void newName(boolean folder){EditText e=input("Name",folder?"new-folder":"index.html");new AlertDialog.Builder(this).setTitle(folder?"Create Folder":"Create File").setView(e).setPositiveButton("CREATE",(d,w)->{File f=new File(currentDir,safeName(e.getText().toString()));try{if(folder)f.mkdirs();else{f.getParentFile().mkdirs();f.createNewFile();}showFiles();}catch(Exception x){toast(x.getMessage());}}).setNegativeButton("CANCEL",null).show();}
-    String safeName(String n){if(n==null||n.trim().isEmpty())n="file";return new File(n.trim()).getName().replaceAll("[^A-Za-z0-9._ -]","_");}
-    void fileMenu(File f){String[] a={"✏️ Edit","↔ Rename","📋 Copy","📤 Move","⬇ Download","🗑 Delete"};new AlertDialog.Builder(this).setTitle(f.getName()).setItems(a,(d,w)->{try{if(w==0&&!f.isDirectory())editFile(f);else if(w==1)rename(f);else if(w==2)copyMove(f,false);else if(w==3)copyMove(f,true);else if(w==4)download(f);else if(w==5)delete(f);}catch(Exception e){toast(e.getMessage());}}).show();}
-    void rename(File f){EditText e=input("New name",f.getName());new AlertDialog.Builder(this).setTitle("Rename").setView(e).setPositiveButton("SAVE",(d,w)->{File n=new File(f.getParentFile(),safeName(e.getText().toString()));if(f.renameTo(n))showFiles();else toast("Rename failed");}).setNegativeButton("CANCEL",null).show();}
-    void copyMove(File f,boolean move){String[] dirs={"Current folder","Web root"};new AlertDialog.Builder(this).setTitle(move?"Move to":"Copy to").setItems(dirs,(d,w)->{try{File dest=w==0?new File(currentDir,f.getName()):new File(WebServerService.webRoot(this),f.getName());if(!dest.equals(f)){copyFile(f,dest);if(move)deleteRec(f);}showFiles();}catch(Exception e){toast(e.getMessage());}}).show();}
-    void copyFile(File a,File b)throws IOException{if(a.equals(b))return;if(a.isDirectory()){b.mkdirs();File[] fs=a.listFiles();if(fs!=null)for(File x:fs)copyFile(x,new File(b,x.getName()));}else{File p=b.getParentFile();if(p!=null)p.mkdirs();InputStream in=new FileInputStream(a);OutputStream out=new FileOutputStream(b);byte[] z=new byte[16384];int n;while((n=in.read(z))>0)out.write(z,0,n);in.close();out.close();}}
-    void delete(File f){new AlertDialog.Builder(this).setTitle("Delete?").setMessage(f.getName()+" will be permanently deleted.").setPositiveButton("DELETE",(d,w)->{deleteRec(f);showFiles();}).setNegativeButton("CANCEL",null).show();}void deleteRec(File f){if(f.isDirectory()){File[] x=f.listFiles();if(x!=null)for(File q:x)deleteRec(q);}f.delete();}
+    void app(){
+        FrameLayout root=new FrameLayout(this);root.setBackgroundColor(BG);root.addView(new Wave(this));
+        LinearLayout shell=new LinearLayout(this);shell.setOrientation(LinearLayout.VERTICAL);shell.setPadding(dp(10),dp(5),dp(10),0);
+        LinearLayout top=new LinearLayout(this);top.setGravity(Gravity.CENTER_VERTICAL);
+        TextView logo=text("▰",25,CYAN);logo.setGravity(Gravity.CENTER);add(top,logo,dp(43),56);
+        LinearLayout titles=new LinearLayout(this);titles.setOrientation(LinearLayout.VERTICAL);
+        pageTitle=text("Salam Web Server",18,WHITE);pageTitle.setTypeface(null,1);add(titles,pageTitle,-1,29);
+        add(titles,text("Your Local Server. Your Control.",10,MUTED),-1,20);
+        top.addView(titles,new LinearLayout.LayoutParams(0,55,1));
+        TextView more=text("☰",23,WHITE);more.setGravity(Gravity.CENTER);more.setOnClickListener(v->about());add(top,more,42,55);
+        shell.addView(top,new LinearLayout.LayoutParams(-1,60));
 
-    void editFile(File f){final EditText e=new EditText(this);e.setTextColor(Color.WHITE);e.setHintTextColor(Color.GRAY);e.setGravity(Gravity.TOP|Gravity.START);e.setTextSize(13);e.setSingleLine(false);e.setMinLines(18);e.setPadding(dp(12),dp(12),dp(12),dp(12));e.setBackground(bg(Color.rgb(5,12,22),14));try{FileInputStream in=new FileInputStream(f);ByteArrayOutputStream out=new ByteArrayOutputStream();byte[] z=new byte[8192];int n;while((n=in.read(z))>0)out.write(z,0,n);in.close();e.setText(new String(out.toByteArray(),"UTF-8"));}catch(Exception x){toast("Read failed");return;}LinearLayout l=new LinearLayout(this);l.setPadding(dp(10),dp(4),dp(10),0);l.addView(e,new LinearLayout.LayoutParams(-1,dp(430)));new AlertDialog.Builder(this).setTitle("✏️ "+f.getName()).setView(l).setPositiveButton("SAVE",(d,w)->{try{FileOutputStream o=new FileOutputStream(f);o.write(e.getText().toString().getBytes("UTF-8"));o.close();toast("File saved");}catch(Exception x){toast(x.getMessage());}}).setNegativeButton("CANCEL",null).show();}
-    void pickFiles(){Intent i=new Intent(Intent.ACTION_OPEN_DOCUMENT);i.addCategory(Intent.CATEGORY_OPENABLE);i.setType("*/*");i.putExtra(Intent.EXTRA_ALLOW_MULTIPLE,true);startActivityForResult(i,801);}
-    @Override protected void onActivityResult(int r,int c,Intent d){super.onActivityResult(r,c,d);if(r==801&&c==RESULT_OK&&d!=null){try{if(d.getClipData()!=null)for(int i=0;i<d.getClipData().getItemCount();i++)saveUri(d.getClipData().getItemAt(i).getUri());else if(d.getData()!=null)saveUri(d.getData());showFiles();}catch(Exception e){toast("Upload failed: "+e.getMessage());}}else if(r==802&&c==RESULT_OK&&d!=null&&downloadFile!=null){try{OutputStream o=getContentResolver().openOutputStream(d.getData());InputStream in=new FileInputStream(downloadFile);byte[] z=new byte[16384];int n;while((n=in.read(z))>0)o.write(z,0,n);in.close();o.close();toast("Downloaded");}catch(Exception e){toast("Download failed");}}}
-    void saveUri(Uri u)throws Exception{String name="upload_"+System.currentTimeMillis();String x=u.toString();int p=x.lastIndexOf('/');if(p>=0&&p<x.length()-1)name=x.substring(p+1).replaceAll("[?#].*","");name=safeName(name);InputStream in=getContentResolver().openInputStream(u);FileOutputStream out=new FileOutputStream(new File(currentDir,name));byte[] z=new byte[16384];int n;while((n=in.read(z))>0)out.write(z,0,n);in.close();out.close();}
-    void download(File f){downloadFile=f;Intent i=new Intent(Intent.ACTION_CREATE_DOCUMENT);i.addCategory(Intent.CATEGORY_OPENABLE);i.setType("*/*");i.putExtra(Intent.EXTRA_TITLE,f.getName());startActivityForResult(i,802);}
-    void extractZipDialog(){EditText e=input("ZIP filename in current folder","site.zip");new AlertDialog.Builder(this).setTitle("📦 Extract ZIP").setView(e).setPositiveButton("EXTRACT",(d,w)->{File z=new File(currentDir,safeName(e.getText().toString()));if(!z.exists()){toast("ZIP not found");return;}try{extract(z,currentDir);showFiles();toast("ZIP extracted safely");}catch(Exception x){toast("Extract failed: "+x.getMessage());}}).setNegativeButton("CANCEL",null).show();}
-    void extract(File z,File dest)throws Exception{String base=dest.getCanonicalPath();ZipInputStream in=new ZipInputStream(new FileInputStream(z));ZipEntry e;while((e=in.getNextEntry())!=null){File o=new File(dest,e.getName());String cp=o.getCanonicalPath();if(!cp.equals(base)&&!cp.startsWith(base+File.separator))throw new IOException("Unsafe ZIP path");if(e.isDirectory())o.mkdirs();else{File p=o.getParentFile();if(p!=null)p.mkdirs();FileOutputStream out=new FileOutputStream(o);byte[] b=new byte[16384];int n;while((n=in.read(b))>0)out.write(b,0,n);out.close();}}in.close();}
+        ScrollView scroll=new ScrollView(this);scroll.setFillViewport(true);
+        content=new LinearLayout(this);content.setOrientation(LinearLayout.VERTICAL);content.setPadding(dp(1),dp(2),dp(1),dp(8));
+        scroll.addView(content);shell.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));
 
-    String snapshot(List<String> a){StringBuilder s=new StringBuilder();synchronized(a){for(String x:a)s.append(x).append("\n");}return s.toString();}
-    void showLogs(){reset();LinearLayout bar=new LinearLayout(this);bar.addView(tv("📜 Server Logs",20,Color.WHITE),new LinearLayout.LayoutParams(0,50,1));Button clear=btn("Clear");clear.setOnClickListener(v->{WebServerService.LOGS.clear();showLogs();});bar.addView(clear,new LinearLayout.LayoutParams(dp(90),dp(48)));body.addView(bar);TextView l=tv(snapshot(WebServerService.LOGS),11,Color.WHITE);l.setPadding(dp(12),dp(12),dp(12),dp(12));l.setBackground(bg(Color.rgb(4,9,16),15));body.addView(l);body.addView(tv("🧾 Access History",17,Color.WHITE));TextView h=tv(snapshot(WebServerService.HISTORY),11,Color.LTGRAY);h.setPadding(dp(12),dp(12),dp(12),dp(12));h.setBackground(bg(Color.rgb(4,9,16),15));body.addView(h);}
+        bottom=new LinearLayout(this);bottom.setGravity(Gravity.CENTER);bottom.setPadding(0,dp(3),0,dp(3));bottom.setBackground(grad(Color.rgb(5,13,25),Color.rgb(9,24,42),16));
+        String[] labels={"⌂\nHome","▱\nFiles","≡\nLogs","⚙\nSettings"};
+        for(int i=0;i<4;i++){final int x=i;TextView n=text(labels[i],11,MUTED);n.setGravity(Gravity.CENTER);n.setOnClickListener(v->show(x));bottom.addView(n,new LinearLayout.LayoutParams(0,dp(58),1));}
+        shell.addView(bottom,new LinearLayout.LayoutParams(-1,dp(65)));
+        root.addView(shell,new FrameLayout.LayoutParams(-1,-1));setContentView(root);
+        show(0);refreshLoop();
+    }
 
-    void showSettings(){reset();body.addView(tv("⚙ Server Settings",23,Color.WHITE));body.addView(tv("All settings are native Android controls. No browser page is opened.",11,Color.LTGRAY));EditText port=input("Port",String.valueOf(prefs.getInt("port",8080)));body.addView(labeled("Port Number",port));EditText pass=input("Web password (blank = off)",prefs.getString("password",""));body.addView(labeled("Web Login Password",pass));EditText allow=input("192.168.1.10,192.168.1.20",prefs.getString("allowIps",""));body.addView(labeled("IP Allowlist",allow));EditText block=input("192.168.1.50",prefs.getString("blockIps",""));body.addView(labeled("IP Blocklist",block));EditText rate=input("Requests / IP / minute",String.valueOf(prefs.getInt("rate",120)));body.addView(labeled("Rate Limit",rate));EditText max=input("Maximum clients",String.valueOf(prefs.getInt("maxClients",32)));body.addView(labeled("Client Limit",max));EditText custom=input("Optional display URL",prefs.getString("customUrl",""));body.addView(labeled("Custom Server URL",custom));Switch only=new Switch(this);only.setText("🛡️ Enforce IP allowlist");only.setTextColor(Color.WHITE);only.setChecked(prefs.getBoolean("allowOnly",false));body.addView(only);Switch auto=new Switch(this);auto.setText("🔔 Background server / notification");auto.setTextColor(Color.WHITE);auto.setChecked(prefs.getBoolean("auto",false));body.addView(auto);Button save=btn("💾 Save Settings");save.setOnClickListener(v->{try{prefs.edit().putInt("port",Integer.parseInt(port.getText().toString().trim())).putString("password",pass.getText().toString()).putString("allowIps",allow.getText().toString()).putString("blockIps",block.getText().toString()).putInt("rate",Math.max(1,Integer.parseInt(rate.getText().toString().trim()))).putInt("maxClients",Math.max(1,Integer.parseInt(max.getText().toString().trim()))).putString("customUrl",custom.getText().toString().trim()).putBoolean("allowOnly",only.isChecked()).putBoolean("auto",auto.isChecked()).apply();toast("Settings saved");}catch(Exception e){toast("Invalid value");}});body.addView(save);Button theme=btn("🎨 Change Theme");theme.setOnClickListener(v->themeDialog());body.addView(theme);Button qr=btn("📱 Show Server QR");qr.setOnClickListener(v->showQr());body.addView(qr);Button net=btn("🌐 Network Information");net.setOnClickListener(v->network());body.addView(net);Button about=btn("👨‍💻 About / Developer");about.setOnClickListener(v->about());body.addView(about);}
-    LinearLayout labeled(String s,EditText e){LinearLayout l=box();l.addView(tv(s,12,Color.LTGRAY));l.addView(e);return l;}EditText input(String hint,String value){EditText e=new EditText(this);e.setHint(hint);e.setText(value);e.setTextColor(Color.WHITE);e.setHintTextColor(Color.GRAY);e.setSingleLine(true);e.setBackground(bg(Color.rgb(7,15,28),13));e.setPadding(dp(12),dp(8),dp(12),dp(8));return e;}
-    void themeDialog(){String[] a={"🌑 Midnight","🌊 Ocean","💜 Violet","💚 Emerald","🌅 Sunset","⚡ Neon"};new AlertDialog.Builder(this).setTitle("🎨 App Theme").setItems(a,(d,w)->{prefs.edit().putInt("theme",w).apply();recreate();}).show();}
-    void network(){new AlertDialog.Builder(this).setTitle("🌐 Network Information").setMessage(WebServerService.networkInfo(this)+"\n\nAccess URL:\n"+WebServerService.currentUrl(this)).setPositiveButton("OK",null).show();}
-    void showQr(){try{String u=WebServerService.currentUrl(this);BitMatrix m=new QRCodeWriter().encode(u,BarcodeFormat.QR_CODE,720,720);Bitmap b=Bitmap.createBitmap(720,720,Bitmap.Config.RGB_565);for(int x=0;x<720;x++)for(int y=0;y<720;y++)b.setPixel(x,y,m.get(x,y)?Color.BLACK:Color.WHITE);ImageView iv=new ImageView(this);iv.setImageBitmap(b);iv.setPadding(dp(18),dp(18),dp(18),dp(18));new AlertDialog.Builder(this).setTitle("📱 Scan Server URL").setView(iv).setMessage(u).setPositiveButton("COPY URL",(d,w)->copy(u)).setNegativeButton("CLOSE",null).show();}catch(Exception e){toast("QR unavailable");}}
-    void copy(String s){((android.content.ClipboardManager)getSystemService(CLIPBOARD_SERVICE)).setPrimaryClip(ClipData.newPlainText("Server URL",s));toast("Copied");}void openUrl(String s){try{startActivity(new Intent(Intent.ACTION_VIEW,Uri.parse(s)));}catch(Exception e){toast("No browser available");}}
-    void server(String a){try{Intent i=new Intent(this,WebServerService.class);i.setAction(a);if(Build.VERSION.SDK_INT>=26&&a.equals("START"))startForegroundService(i);else startService(i);handler.postDelayed(this::refresh,400);}catch(Exception e){toast("Server error: "+e.getMessage());}}
-    void refresh(){if(status==null)return;boolean r=WebServerService.isRunning();status.setText(r?"● RUNNING":"● OFFLINE");status.setTextColor(r?Color.rgb(30,240,150):Color.RED);if(metrics!=null)metrics.setText("📈 Requests: "+WebServerService.getRequestCount()+"\n👥 Clients: "+WebServerService.getClientCount()+"   ⏱ "+WebServerService.uptime()+"\n🧠 RAM: "+WebServerService.memoryText(this)+"   💽 Storage: "+storage());if(url!=null)url.setText(WebServerService.currentUrl(this));}
-    String storage(){StatFs s=new StatFs(getFilesDir().getAbsolutePath());return human(s.getTotalBytes()-s.getAvailableBytes())+" / "+human(s.getTotalBytes());}
-    void about(){new AlertDialog.Builder(this).setTitle("🖥️ Salam-Web-Server v10").setMessage("Native Android Web Server\n\nDeveloper: Abdus Salam\nPhone: 09696590864\nEmail: salam230864@gmail.com\nMessenger: m.me/Salam.864\n\nAll app controls run inside Android. The browser is used only when you explicitly choose Open Website.").setPositiveButton("OK",null).setNegativeButton("Messenger",(d,w)->openUrl("https://m.me/Salam.864")).show();}
-    @Override protected void onResume(){super.onResume();if(body!=null){if(screen==1)showFiles();else if(screen==2)showLogs();else if(screen==3)showSettings();else showHome();}}
+    void show(int p){
+        page=p;content.removeAllViews();
+        if(p==0) home(); else if(p==1) files(); else if(p==2) logs(); else settings();
+        if(pageTitle!=null) pageTitle.setText(p==0?"Salam Web Server":p==1?"Web Files":p==2?"Server Logs":"Server Settings");
+    }
+
+    void home(){
+        LinearLayout c=card();LinearLayout head=new LinearLayout(this);head.setGravity(Gravity.CENTER_VERTICAL);
+        TextView icon=text("▰",45,CYAN);icon.setGravity(Gravity.CENTER);add(head,icon,70,70);
+        LinearLayout x=new LinearLayout(this);x.setOrientation(LinearLayout.VERTICAL);
+        homeStatus=text("Server Stopped",16,Color.RED);homeStatus.setTypeface(null,1);add(x,homeStatus,-1,28);add(x,text("Your local server is ready.",11,MUTED),-1,23);
+        head.addView(x,new LinearLayout.LayoutParams(0,62,1));
+        Switch sw=new Switch(this);sw.setChecked(WebServerService.running);sw.setOnCheckedChangeListener((b,v)->server(v));add(head,sw,58,58);c.addView(head);
+        homeUrl=text(WebServerService.currentUrl(this),13,WHITE);homeUrl.setGravity(Gravity.CENTER_VERTICAL);homeUrl.setPadding(dp(13),0,dp(13),0);homeUrl.setBackground(grad(Color.rgb(5,16,31),Color.rgb(10,28,50),13));add(c,homeUrl,-1,50);
+        LinearLayout actions=new LinearLayout(this);
+        Button open=blueButton("🌐  Open Browser");open.setOnClickListener(v->openBrowser());Button copy=blueButton("▣  Copy URL");copy.setOnClickListener(v->copyUrl());
+        actions.addView(open,new LinearLayout.LayoutParams(0,dp(46),1));actions.addView(copy,new LinearLayout.LayoutParams(0,dp(46),1));c.addView(actions);
+        content.addView(c);
+        homeStats=text("●  Online      Requests: 0      Clients: 0\nUptime: 00:00:00      RAM: —",12,WHITE);homeStats.setPadding(dp(15),dp(8),dp(15),dp(8));homeStats.setBackground(grad(CARD,CARD2,17));add(content,homeStats,-1,65);
+        section("QUICK ACTIONS");
+        tile("📁","Web Files","Manage your website files",()->show(1));
+        tile("⚙","Settings","Server configuration & security",()->show(3));
+        tile("⌁","Network Info","LAN address, Wi-Fi and interfaces",()->network());
+        tile("▤","Server Logs","Live request and access history",()->show(2));
+        section("SERVER");
+        tile("🔳","QR Server Sharing","Share your local server address",()->qr());
+        tile("🔐","Web Login","Password protection for website access",()->security());
+        tile("🟢","IP Allowlist / Blocklist","Control who can access the server",()->security());
+        tile("🚦","Request Rate Limit","Limit requests per IP",()->security());
+        tile("🎨","Themes","Midnight • Ocean • Violet • Emerald • Sunset",()->theme());
+        section("DEVELOPER");
+        tile("👨‍💻","About Salam Web Server","Version 10.0 • Abdus Salam",()->about());
+        tile("💬","Messenger","Contact the developer",()->messenger());
+    }
+
+    void section(String s){TextView t=text("  "+s,11,Color.rgb(120,165,215));t.setTypeface(null,1);add(content,t,-1,35);}
+    void tile(String ico,String name,String desc,final Runnable run){
+        LinearLayout c=card();c.setOrientation(LinearLayout.HORIZONTAL);TextView i=text(ico,25,WHITE);i.setGravity(Gravity.CENTER);add(c,i,52,55);
+        LinearLayout x=new LinearLayout(this);x.setOrientation(LinearLayout.VERTICAL);add(x,text(name,14,WHITE),-1,27);add(x,text(desc,10,MUTED),-1,23);
+        c.addView(x,new LinearLayout.LayoutParams(0,55,1));TextView arrow=text("›",27,CYAN);arrow.setGravity(Gravity.CENTER);add(c,arrow,28,55);c.setOnClickListener(v->run.run());content.addView(c);
+    }
+
+    void server(boolean start){
+        try{Intent i=new Intent(this,WebServerService.class);i.setAction(start?"START":"STOP");
+            if(start&&Build.VERSION.SDK_INT>=26)startForegroundService(i);else startService(i);
+        }catch(Exception e){Toast.makeText(this,e.getMessage(),Toast.LENGTH_LONG).show();}
+        handler.postDelayed(()->show(0),300);
+    }
+    void refreshLoop(){
+        handler.postDelayed(new Runnable(){public void run(){
+            if(isFinishing())return;
+            if(page==0 && homeStatus!=null){
+                boolean r=WebServerService.running;
+                homeStatus.setText(r?"Server Running":"Server Stopped");homeStatus.setTextColor(r?GREEN:Color.RED);
+                homeUrl.setText(WebServerService.currentUrl(MainActivity.this));
+                homeStats.setText((r?"●  Online":"●  Offline")+"      Requests: "+WebServerService.requests+"      Clients: "+WebServerService.clients.size()+
+                        "\nUptime: "+WebServerService.uptime()+"      RAM: "+WebServerService.memoryText(MainActivity.this));
+            }
+            handler.postDelayed(this,1000);
+        }},1000);
+    }
+
+    void files(){
+        LinearLayout pbar=card();TextView path=text("📁  "+folder,12,WHITE);path.setGravity(Gravity.CENTER_VERTICAL);path.setPadding(dp(13),0,dp(13),0);path.setBackground(grad(Color.rgb(6,17,32),CARD2,12));add(pbar,path,-1,47);content.addView(pbar);
+        LinearLayout act=new LinearLayout(this);Button u=blueButton("＋ Upload");u.setOnClickListener(v->pick());Button f=blueButton("＋ Folder");f.setOnClickListener(v->newFolder());Button nf=blueButton("＋ File");nf.setOnClickListener(v->newFile());
+        act.addView(u,new LinearLayout.LayoutParams(0,dp(44),1));act.addView(f,new LinearLayout.LayoutParams(0,dp(44),1));act.addView(nf,new LinearLayout.LayoutParams(0,dp(44),1));content.addView(act);
+        File d=new File(WebServerService.webRoot(this),folder);File[] list=d.listFiles();if(list==null)return;Arrays.sort(list,(a,b)->{if(a.isDirectory()!=b.isDirectory())return a.isDirectory()?-1:1;return a.getName().compareToIgnoreCase(b.getName());});
+        if(!"/".equals(folder))tile("‹","..","Parent folder",()->{int q=folder.lastIndexOf('/');folder=q<=0?"/":folder.substring(0,q);show(1);});
+        for(File q:list){final File file=q;tile(file.isDirectory()?"📂":fileIcon(file.getName()),file.getName(),file.isDirectory()?"Folder • "+count(file)+" items":format(file.length()),()->fileMenu(file));}
+    }
+    int count(File f){File[] x=f.listFiles();return x==null?0:x.length;}
+    String fileIcon(String n){String x=n.toLowerCase(Locale.US);if(x.endsWith(".html")||x.endsWith(".htm"))return"🌐";if(x.endsWith(".css"))return"🎨";if(x.endsWith(".js"))return"🟨";if(x.endsWith(".json"))return"🧩";if(x.endsWith(".zip"))return"📦";if(x.endsWith(".png")||x.endsWith(".jpg")||x.endsWith(".jpeg"))return"🖼";return"📄";}
+    String format(long b){if(b<1024)return b+" B";if(b<1048576)return(b/1024)+" KB";return(b/1048576)+" MB";}
+
+    void fileMenu(File f){
+        ArrayList<String> a=new ArrayList<>();if(f.isDirectory())a.add("📂 Open");else a.add("✏️ Edit");a.add("✏️ Rename");a.add("📋 Copy");a.add("📤 Move");a.add("⬇️ Save As");a.add("🗑 Delete");
+        new AlertDialog.Builder(this).setTitle(f.getName()).setItems(a.toArray(new String[0]),(d,w)->{
+            String s=a.get(w);if("📂 Open".equals(s)){folder=(folder.endsWith("/")?folder:folder+"/")+f.getName();show(1);}
+            else if("✏️ Edit".equals(s))edit(f);else if("✏️ Rename".equals(s))rename(f);else if("📋 Copy".equals(s))copyMove(f,false);
+            else if("📤 Move".equals(s))copyMove(f,true);else if("⬇️ Save As".equals(s))saveAs(f);else if("🗑 Delete".equals(s))deleteConfirm(f);
+        }).show();
+    }
+    void edit(File f){EditText e=new EditText(this);e.setTextColor(WHITE);e.setTextSize(12);e.setGravity(Gravity.TOP);e.setMinLines(15);try{e.setText(read(f));}catch(Exception ignored){}new AlertDialog.Builder(this).setTitle("📝 "+f.getName()).setView(e).setNegativeButton("Cancel",null).setPositiveButton("Save",(d,w)->{try{write(f,e.getText().toString());Toast.makeText(this,"File saved",Toast.LENGTH_SHORT).show();}catch(Exception x){Toast.makeText(this,x.getMessage(),Toast.LENGTH_LONG).show();}}).show();}
+    String read(File f)throws Exception{BufferedReader r=new BufferedReader(new FileReader(f));StringBuilder s=new StringBuilder();String x;while((x=r.readLine())!=null)s.append(x).append('\n');r.close();return s.toString();}
+    void write(File f,String s)throws Exception{FileWriter w=new FileWriter(f);w.write(s);w.close();}
+    void rename(File f){EditText e=input(f.getName());new AlertDialog.Builder(this).setTitle("✏️ Rename").setView(e).setNegativeButton("Cancel",null).setPositiveButton("Rename",(d,w)->{String n=e.getText().toString().trim().replace("/","_");if(!n.isEmpty()&&!new File(f.getParent(),n).exists()&&f.renameTo(new File(f.getParent(),n)))show(1);}).show();}
+    void copyMove(File f,boolean move){EditText e=input(folder);new AlertDialog.Builder(this).setTitle(move?"📤 Move":"📋 Copy").setView(e).setNegativeButton("Cancel",null).setPositiveButton(move?"Move":"Copy",(d,w)->{try{File destDir=new File(WebServerService.webRoot(this),e.getText().toString());destDir.mkdirs();copyRecursive(f,new File(destDir,f.getName()));if(move)delete(f);show(1);}catch(Exception x){Toast.makeText(this,x.getMessage(),Toast.LENGTH_LONG).show();}}).show();}
+    void copyRecursive(File a,File b)throws IOException{if(a.isDirectory()){b.mkdirs();File[] x=a.listFiles();if(x!=null)for(File q:x)copyRecursive(q,new File(b,q.getName()));}else{InputStream in=new FileInputStream(a);OutputStream out=new FileOutputStream(b);byte[] z=new byte[16384];int n;while((n=in.read(z))>0)out.write(z,0,n);in.close();out.close();}}
+    void deleteConfirm(File f){new AlertDialog.Builder(this).setTitle("🗑 Delete").setMessage("Delete "+f.getName()+"?").setNegativeButton("Cancel",null).setPositiveButton("Delete",(d,w)->{delete(f);show(1);}).show();}
+    void delete(File f){if(f.isDirectory()){File[] x=f.listFiles();if(x!=null)for(File q:x)delete(q);}f.delete();}
+    void saveAs(File f){Intent i=new Intent(Intent.ACTION_CREATE_DOCUMENT);i.setType("*/*");i.putExtra(Intent.EXTRA_TITLE,f.getName());pending=f;startActivityForResult(i,102);}
+    File pending;
+    void pick(){Intent i=new Intent(Intent.ACTION_OPEN_DOCUMENT);i.setType("*/*");i.putExtra(Intent.EXTRA_ALLOW_MULTIPLE,true);i.addCategory(Intent.CATEGORY_OPENABLE);startActivityForResult(i,101);}
+    @Override protected void onActivityResult(int r,int c,Intent d){super.onActivityResult(r,c,d);try{
+        if(r==101&&c==RESULT_OK&&d!=null){if(d.getClipData()!=null)for(int k=0;k<d.getClipData().getItemCount();k++)copyUri(d.getClipData().getItemAt(k).getUri());else if(d.getData()!=null)copyUri(d.getData());show(1);}
+        if(r==102&&c==RESULT_OK&&d!=null&&d.getData()!=null&&pending!=null){InputStream in=new FileInputStream(pending);OutputStream out=getContentResolver().openOutputStream(d.getData());byte[] z=new byte[16384];int n;while((n=in.read(z))>0)out.write(z,0,n);in.close();out.close();pending=null;Toast.makeText(this,"Saved",Toast.LENGTH_SHORT).show();}
+    }catch(Exception e){Toast.makeText(this,e.getMessage(),Toast.LENGTH_LONG).show();}}
+    void copyUri(Uri u)throws Exception{String n="upload_"+System.currentTimeMillis();String s=u.getPath();if(s!=null&&s.contains(":"))n=s.substring(s.lastIndexOf(':')+1);if(n.contains("/"))n=n.substring(n.lastIndexOf('/')+1);File out=new File(WebServerService.webRoot(this),folder+"/"+n);InputStream in=getContentResolver().openInputStream(u);OutputStream o=new FileOutputStream(out);byte[] z=new byte[8192];int q;while((q=in.read(z))>0)o.write(z,0,q);in.close();o.close();}
+    void newFolder(){EditText e=input("");new AlertDialog.Builder(this).setTitle("📂 Create Folder").setView(e).setNegativeButton("Cancel",null).setPositiveButton("Create",(d,w)->{String n=e.getText().toString().trim();if(!n.isEmpty())new File(WebServerService.webRoot(this),folder+"/"+n).mkdirs();show(1);}).show();}
+    void newFile(){EditText e=input("index.html");new AlertDialog.Builder(this).setTitle("📄 Create File").setView(e).setNegativeButton("Cancel",null).setPositiveButton("Create",(d,w)->{try{File f=new File(WebServerService.webRoot(this),folder+"/"+e.getText().toString().trim());f.getParentFile().mkdirs();f.createNewFile();show(1);}catch(Exception ignored){}}).show();}
+    EditText input(String s){EditText e=new EditText(this);e.setText(s);e.setTextColor(WHITE);e.setHintTextColor(Color.GRAY);e.setSingleLine(true);return e;}
+
+    void logs(){LinearLayout c=card();LinearLayout r=new LinearLayout(this);Button clear=blueButton("🗑 Clear Log");Button refresh=blueButton("↻ Refresh");clear.setOnClickListener(v->{WebServerService.clearLogs();logs();});refresh.setOnClickListener(v->logs());r.addView(clear,new LinearLayout.LayoutParams(0,dp(44),1));r.addView(refresh,new LinearLayout.LayoutParams(0,dp(44),1));c.addView(r);TextView l=text(WebServerService.logsText(),11,WHITE);l.setGravity(Gravity.TOP);l.setPadding(dp(4),dp(10),dp(4),dp(10));c.addView(l,new LinearLayout.LayoutParams(-1,dp(560)));content.addView(c);}
+    void settings(){section("SERVER CONFIGURATION");setting("▣","Port","8080 • Change listening port",()->portDialog());setting("📁","Document Root","App-local web root • /files/www",()->Toast.makeText(this,"Web root: "+WebServerService.webRoot(this),Toast.LENGTH_LONG).show());setting("🚀","Auto Start",pref.getBoolean("autostart",false)?"Enabled":"Disabled",()->{boolean x=!pref.getBoolean("autostart",false);pref.edit().putBoolean("autostart",x).apply();settings();});section("SECURITY");setting("🔐","Password Protection",pref.getString("password","").isEmpty()?"Off":"On",()->security());setting("🟢","IP Allowlist",pref.getString("allowIps","").isEmpty()?"Empty":"Configured",()->security());setting("🔴","IP Blocklist",pref.getString("blockIps","").isEmpty()?"Empty":"Configured",()->security());setting("🚦","Request Rate Limit",""+pref.getInt("rate",120)+" requests/min/IP",()->security());section("NETWORK & APPEARANCE");setting("🌐","Network Info","LAN address & interfaces",()->network());setting("🔳","QR Server Sharing","Share server URL",()->qr());setting("🎨","Theme","Midnight • Ocean • Violet • Emerald • Sunset",()->theme());section("ABOUT");setting("👨‍💻","Developer","Abdus Salam • 09696590864",()->about());setting("💬","Messenger","m.me/Salam.864",()->messenger());}
+    void setting(String i,String n,String d,Runnable r){tile(i,n,d,r);}
+    void portDialog(){EditText e=input(""+pref.getInt("port",8080));new AlertDialog.Builder(this).setTitle("Port").setView(e).setNegativeButton("Cancel",null).setPositiveButton("Save",(d,w)->{try{int p=Integer.parseInt(e.getText().toString());if(p>=1024&&p<=65535)pref.edit().putInt("port",p).apply();}catch(Exception ignored){}settings();}).show();}
+    void security(){LinearLayout l=new LinearLayout(this);l.setOrientation(LinearLayout.VERTICAL);l.setPadding(dp(8),0,dp(8),0);EditText pass=input(pref.getString("password",""));pass.setHint("Web password");EditText allow=input(pref.getString("allowIps",""));allow.setHint("Allow IPs, comma separated");EditText block=input(pref.getString("blockIps",""));block.setHint("Block IPs, comma separated");EditText rate=input(""+pref.getInt("rate",120));rate.setHint("Requests/min/IP");EditText max=input(""+pref.getInt("maxClients",32));max.setHint("Maximum clients");l.addView(pass);l.addView(allow);l.addView(block);l.addView(rate);l.addView(max);new AlertDialog.Builder(this).setTitle("🛡 Security").setView(l).setNegativeButton("Cancel",null).setPositiveButton("Save",(d,w)->pref.edit().putString("password",pass.getText().toString()).putString("allowIps",allow.getText().toString()).putString("blockIps",block.getText().toString()).putInt("rate",parse(rate,120)).putInt("maxClients",parse(max,32)).apply()).show();}
+    int parse(EditText e,int d){try{return Integer.parseInt(e.getText().toString());}catch(Exception x){return d;}}
+    void theme(){new AlertDialog.Builder(this).setTitle("🎨 Theme").setItems(new String[]{"🌑 Midnight","🌊 Ocean","💜 Violet","💚 Emerald","🌅 Sunset","⚡ Neon"},(d,w)->Toast.makeText(this,"Theme "+(w+1)+" selected",Toast.LENGTH_SHORT).show()).show();}
+    void network(){new AlertDialog.Builder(this).setTitle("🌐 Network Info").setMessage("Local Server URL\n"+WebServerService.currentUrl(this)+"\n\n"+WebServerService.networkInfo(this)).setPositiveButton("OK",null).show();}
+    void qr(){new AlertDialog.Builder(this).setTitle("🔳 QR Server Sharing").setMessage("Server address:\n\n"+WebServerService.currentUrl(this)+"\n\nUse Share to send the URL to another device.").setNegativeButton("Close",null).setPositiveButton("Share",(d,w)->shareText(WebServerService.currentUrl(this))).show();}
+    void shareText(String s){Intent i=new Intent(Intent.ACTION_SEND);i.setType("text/plain");i.putExtra(Intent.EXTRA_TEXT,s);startActivity(Intent.createChooser(i,"Share Server URL"));}
+    void copyUrl(){((android.content.ClipboardManager)getSystemService(CLIPBOARD_SERVICE)).setPrimaryClip(ClipData.newPlainText("Server URL",WebServerService.currentUrl(this)));Toast.makeText(this,"URL copied",Toast.LENGTH_SHORT).show();}
+    void openBrowser(){startActivity(new Intent(Intent.ACTION_VIEW,Uri.parse(WebServerService.currentUrl(this))));}
+    void messenger(){try{startActivity(new Intent(Intent.ACTION_VIEW,Uri.parse("https://m.me/Salam.864")));}catch(Exception ignored){}}
+    void about(){new AlertDialog.Builder(this).setTitle("Salam Web Server").setMessage("Version 10.0\n\nDeveloped by Abdus Salam\n09696590864\nsalam230864@gmail.com\n\nFast • Secure • Local\nNative Android control panel").setPositiveButton("OK",null).show();}
+    static class Wave extends View{
+        Paint p=new Paint(Paint.ANTI_ALIAS_FLAG);Path path=new Path();
+        Wave(Context c){super(c);}
+        protected void onDraw(Canvas c){int w=getWidth(),h=getHeight();LinearGradient g=new LinearGradient(0,0,w,h,Color.rgb(3,12,25),Color.rgb(7,27,51),Shader.TileMode.CLAMP);p.setShader(g);c.drawRect(0,0,w,h,p);p.setShader(null);p.setStyle(Paint.Style.STROKE);p.setStrokeWidth(2);p.setColor(Color.rgb(10,102,225));for(int j=0;j<3;j++){path.reset();for(int x=0;x<=w;x+=10){float y=h*.70f+j*dp(18)+(float)Math.sin(x*.013+j)*dp(19);if(x==0)path.moveTo(x,y);else path.lineTo(x,y);}c.drawPath(path,p);}p.setStyle(Paint.Style.FILL);}
+    }
 }
