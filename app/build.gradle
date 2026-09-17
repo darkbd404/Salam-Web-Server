@@ -1,27 +1,22 @@
-plugins {
-    id 'com.android.application'
-}
+plugins { id 'com.android.application' }
 
 android {
-    namespace 'com.salam.androidwebserver'
+    namespace 'com.salam.androidserver'
     compileSdk 35
-
     defaultConfig {
-        applicationId 'com.salam.androidwebserver'
+        applicationId 'com.salam.androidserver'
         minSdk 26
-        targetSdk 35
+        targetSdk 34
         versionCode 10
         versionName '10.0'
     }
-
-    compileOptions {
-        sourceCompatibility JavaVersion.VERSION_17
-        targetCompatibility JavaVersion.VERSION_17
+    buildTypes {
+        release { minifyEnabled false; shrinkResources false; proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro' }
     }
+    compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
 }
 
 dependencies {
     implementation 'androidx.appcompat:appcompat:1.7.0'
-    implementation 'com.google.android.material:material:1.12.0'
     implementation 'com.journeyapps:zxing-android-embedded:4.3.0'
 }
