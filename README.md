@@ -1,11 +1,5 @@
-# Salam Android Web Server
+# Salam Web Server Pro
 
-A minimal no-Termux Android HTTP server starter project.
+Android local HTTP web server with file manager, website editor, ZIP importer, QR URL, background foreground service, logs, statistics and optional Basic password protection.
 
-## Build
-Open the project in Android Studio and build the debug APK.
-
-## Usage
-The app creates an internal `www` folder and a starter `index.html`, then serves it over the phone's network interface.
-
-This starter intentionally does not provide Android root/system control. It is a web server for files inside its own app sandbox.
+Build with GitHub Actions using JDK 17, Android SDK 35 and Gradle 8.10.2.
