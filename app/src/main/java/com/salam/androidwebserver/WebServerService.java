@@ -2,52 +2,59 @@ package com.salam.androidwebserver;
 
 import android.app.*;
 import android.content.*;
-import android.os.IBinder;
-import androidx.annotation.Nullable;
+import android.os.*;
 import java.io.*;
 import java.net.*;
-import java.nio.charset.StandardCharsets;
+import java.text.*;
 import java.util.*;
 import java.util.concurrent.*;
+import android.content.SharedPreferences;
 
 public class WebServerService extends Service {
-    public static final String ACTION_STATUS="com.salam.androidwebserver.STATUS";
-    public static final String EXTRA_RUNNING="running", EXTRA_URL="url", EXTRA_REQUESTS="requests", EXTRA_CLIENTS="clients", EXTRA_LOG="log";
-    private static final String CHANNEL="web_server"; private static final int NOTIFY_ID=4040;
-    private ServerSocket serverSocket; private ExecutorService pool; private volatile boolean running=false;
-    private volatile long requests=0; private final Set<String> clients=ConcurrentHashMap.newKeySet();
-    private File www; private int port=8080; private String password="";
+    static volatile WebServerService instance;
+    volatile boolean running=false;
+    ServerSocket server;
+    Thread acceptThread;
+    File www;
+    SharedPreferences sp;
+    final List<String> logs=Collections.synchronizedList(new ArrayList<>());
+    final Set<String> clients=ConcurrentHashMap.newKeySet();
+    volatile long requests=0, startedAt=0;
 
-    @Override public void onCreate(){ super.onCreate(); www=new File(getFilesDir(),"www"); if(!www.exists())www.mkdirs(); createStarterSite(); createChannel(); }
-    @Override public int onStartCommand(Intent intent,int flags,int startId){ if(intent!=null&&"STOP".equals(intent.getAction())){stopServer();stopSelf();return START_NOT_STICKY;} if(!running)startServer(); return START_STICKY; }
-    private void createChannel(){ NotificationManager nm=getSystemService(NotificationManager.class); if(nm!=null)nm.createNotificationChannel(new NotificationChannel(CHANNEL,"Web Server",NotificationManager.IMPORTANCE_LOW)); }
-    private Notification notification(String text){ Intent i=new Intent(this,MainActivity.class); PendingIntent pi=PendingIntent.getActivity(this,0,i,PendingIntent.FLAG_IMMUTABLE|PendingIntent.FLAG_UPDATE_CURRENT); return new Notification.Builder(this,CHANNEL).setContentTitle("Salam Web Server").setContentText(text).setSmallIcon(android.R.drawable.stat_sys_upload).setContentIntent(pi).setOngoing(true).build(); }
-    private void startServer(){
-        SharedPreferences p=getSharedPreferences("server",MODE_PRIVATE); port=p.getInt("port",8080); password=p.getBoolean("auth",false)?p.getString("password",""):"";
-        try{ serverSocket=new ServerSocket(port); pool=Executors.newCachedThreadPool(); running=true; startForeground(NOTIFY_ID,notification("Running on port "+port)); broadcast("Server started",true);
-            pool.execute(()->{while(running){try{Socket s=serverSocket.accept();pool.execute(()->handle(s));}catch(IOException e){if(running)broadcast("Accept error: "+e.getMessage(),true);}}});
-        }catch(Exception e){running=false;broadcast("Server failed: "+e.getMessage(),false);stopSelf();}
-    }
-    private void stopServer(){running=false;try{if(serverSocket!=null)serverSocket.close();}catch(Exception ignored){} if(pool!=null)pool.shutdownNow();clients.clear();broadcast("Server stopped",false);stopForeground(STOP_FOREGROUND_REMOVE);}
-    private void handle(Socket socket){ String client=socket.getInetAddress().getHostAddress(); clients.add(client); requests++; try{
-        socket.setSoTimeout(8000); BufferedReader r=new BufferedReader(new InputStreamReader(socket.getInputStream(),StandardCharsets.ISO_8859_1)); OutputStream out=socket.getOutputStream();
-        String first=r.readLine(); if(first==null)return; String[] parts=first.split(" "); if(parts.length<2)return; String method=parts[0]; String target=URLDecoder.decode(parts[1],StandardCharsets.UTF_8.name()); String line,auth="";
-        while((line=r.readLine())!=null&&!line.isEmpty())if(line.toLowerCase(Locale.US).startsWith("authorization:"))auth=line.substring(14).trim();
-        if(!"GET".equalsIgnoreCase(method)&&!"HEAD".equalsIgnoreCase(method)){send(out,405,"Method Not Allowed","text/plain","Only GET and HEAD are supported.");return;}
-        if(!password.isEmpty()&&!authorized(auth)){out.write(("HTTP/1.1 401 Unauthorized\r\nWWW-Authenticate: Basic realm=\"Salam Web Server\"\r\nContent-Length: 0\r\nConnection: close\r\n\r\n").getBytes(StandardCharsets.ISO_8859_1));return;}
-        int q=target.indexOf('?'); if(q>=0)target=target.substring(0,q); if(target.isEmpty()||"/".equals(target))target="/index.html";
-        if(target.contains("..")||target.contains("\\")||target.startsWith("//")){send(out,403,"Forbidden","text/plain","Forbidden");return;}
-        File base=www.getCanonicalFile(); File f=new File(base,target.substring(1)).getCanonicalFile(); if(!f.toPath().startsWith(base.toPath())||!f.isFile()){send(out,404,"Not Found","text/plain","404 - File Not Found");return;}
-        String mime=mime(f.getName()); long len=f.length(); out.write(("HTTP/1.1 200 OK\r\nContent-Type: "+mime+"\r\nContent-Length: "+len+"\r\nCache-Control: no-cache\r\nConnection: close\r\n\r\n").getBytes(StandardCharsets.ISO_8859_1));
-        if(!"HEAD".equalsIgnoreCase(method)){try(InputStream in=new FileInputStream(f)){byte[] buf=new byte[16384];int n;while((n=in.read(buf))!=-1)out.write(buf,0,n);}} out.flush(); broadcast("GET "+target+" ["+client+"]",true);
-    }catch(Exception e){broadcast("Client error: "+e.getMessage(),true);}finally{clients.remove(client);try{socket.close();}catch(Exception ignored){}updateNotification();}}
-    private boolean authorized(String header){try{if(!header.regionMatches(true,0,"Basic ",0,6))return false;String d=new String(Base64.getDecoder().decode(header.substring(6).trim()),StandardCharsets.UTF_8);return d.equals("admin:"+password);}catch(Exception e){return false;}}
-    private void send(OutputStream out,int code,String msg,String mime,String body)throws IOException{byte[] b=body.getBytes(StandardCharsets.UTF_8);out.write(("HTTP/1.1 "+code+" "+msg+"\r\nContent-Type: "+mime+"; charset=UTF-8\r\nContent-Length: "+b.length+"\r\nConnection: close\r\n\r\n").getBytes(StandardCharsets.UTF_8));out.write(b);}
-    private String mime(String n){String s=n.toLowerCase(Locale.US);if(s.endsWith(".html")||s.endsWith(".htm"))return"text/html";if(s.endsWith(".css"))return"text/css";if(s.endsWith(".js"))return"application/javascript";if(s.endsWith(".json"))return"application/json";if(s.endsWith(".xml"))return"application/xml";if(s.endsWith(".txt"))return"text/plain";if(s.endsWith(".pdf"))return"application/pdf";if(s.endsWith(".png"))return"image/png";if(s.endsWith(".jpg")||s.endsWith(".jpeg"))return"image/jpeg";if(s.endsWith(".gif"))return"image/gif";if(s.endsWith(".webp"))return"image/webp";if(s.endsWith(".svg"))return"image/svg+xml";if(s.endsWith(".mp3"))return"audio/mpeg";if(s.endsWith(".mp4"))return"video/mp4";if(s.endsWith(".zip"))return"application/zip";return"application/octet-stream";}
-    private void broadcast(String log,boolean isRunning){Intent i=new Intent(ACTION_STATUS);i.setPackage(getPackageName());i.putExtra(EXTRA_RUNNING,isRunning);i.putExtra(EXTRA_URL,"http://"+localIp()+":"+port);i.putExtra(EXTRA_REQUESTS,requests);i.putExtra(EXTRA_CLIENTS,clients.size());i.putExtra(EXTRA_LOG,log);sendBroadcast(i);}
-    private void updateNotification(){if(running){NotificationManager nm=getSystemService(NotificationManager.class);if(nm!=null)nm.notify(NOTIFY_ID,notification("Running • "+requests+" requests • "+clients.size()+" clients"));}}
-    private String localIp(){try{Enumeration<NetworkInterface> en=NetworkInterface.getNetworkInterfaces();while(en.hasMoreElements()){NetworkInterface ni=en.nextElement();Enumeration<InetAddress>a=ni.getInetAddresses();while(a.hasMoreElements()){InetAddress x=a.nextElement();if(!x.isLoopbackAddress()&&x instanceof Inet4Address)return x.getHostAddress();}}}catch(Exception ignored){}return"127.0.0.1";}
-    private void createStarterSite(){File f=new File(www,"index.html");if(f.exists())return;String h="<!doctype html><html><head><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>Salam Web Server</title><style>body{font-family:Arial;background:#101114;color:#fff;text-align:center;padding:40px}.box{max-width:600px;margin:auto;padding:30px;border-radius:24px;background:#1a1c21}</style></head><body><div class=\"box\"><h1>Salam Web Server</h1><p>Your Android web server is working.</p><p>Import your website files into the app.</p></div></body></html>";try(FileOutputStream o=new FileOutputStream(f)){o.write(h.getBytes(StandardCharsets.UTF_8));}catch(Exception ignored){}}
-    @Override public void onDestroy(){stopServer();super.onDestroy();}
-    @Nullable @Override public IBinder onBind(Intent intent){return null;}
+    @Override public void onCreate(){super.onCreate();instance=this;sp=getSharedPreferences(MainActivity.PREF,MODE_PRIVATE);www=new File(getFilesDir(),"www");www.mkdirs();createChannel();}
+    @Override public int onStartCommand(Intent i,int flags,int id){if(i!=null&&"STOP".equals(i.getAction()))stopServer();else if(i==null||"START".equals(i.getAction()))startServer();return START_STICKY;}
+    void startServer(){if(running)return; int port=sp.getInt("port",8080); try{server=new ServerSocket(port);running=true;startedAt=System.currentTimeMillis();log("SERVER STARTED on "+currentUrl(this));startForeground(7,notification()); acceptThread=new Thread(()->acceptLoop(),"SalamWebServer");acceptThread.start();}catch(Exception e){log("START ERROR: "+e);}}
+    void acceptLoop(){while(running){try{Socket s=server.accept();new Thread(()->handle(s)).start();}catch(Exception e){if(running)log("ACCEPT ERROR: "+e);}}}
+    void handle(Socket s){String ip=s.getInetAddress().getHostAddress();clients.add(ip);requests++;String method="?",path="/",ua="-";int status=500;try{s.setSoTimeout(8000);BufferedReader r=new BufferedReader(new InputStreamReader(s.getInputStream(),"ISO-8859-1"));String first=r.readLine();if(first==null){s.close();return;}String[] p=first.split(" ");if(p.length>=2){method=p[0];path=p[1];}
+        Map<String,String> h=new HashMap<>();String line;while((line=r.readLine())!=null&&!line.isEmpty()){int k=line.indexOf(':');if(k>0)h.put(line.substring(0,k).trim().toLowerCase(),line.substring(k+1).trim());}ua=h.getOrDefault("user-agent","-");
+        if(!allowed(ip)){send(s,403,"text/plain","403 Forbidden - IP not allowed");status=403;return;}
+        if(path.startsWith("/__admin")){if(!auth(h.get("authorization"))){send401(s);status=401;return;}send(s,200,"text/html",adminHtml());status=200;return;}
+        if(sp.getBoolean("protect",false)&&!auth(h.get("authorization"))){send401(s);status=401;return;}
+        if(!method.equals("GET")&&!method.equals("HEAD")){send(s,405,"text/plain","Method Not Allowed");status=405;return;}
+        String clean=URLDecoder.decode(path.split("\\?",2)[0],"UTF-8");if(clean.equals("/"))clean="/index.html";
+        File f=new File(www,clean.substring(1));String root=www.getCanonicalPath(), target=f.getCanonicalPath();if(!target.startsWith(root+File.separator)&&!target.equals(root)){send(s,403,"text/plain","Forbidden");status=403;return;}
+        if(f.isDirectory()){File idx=new File(f,"index.html");if(idx.exists())f=idx;else{send(s,200,"text/html",directory(f));status=200;return;}}
+        if(!f.exists()||!f.isFile()){send(s,404,"text/plain","404 Not Found");status=404;return;}
+        byte[]data=readBytes(f);sendBytes(s,200,mime(f.getName()),data,!method.equals("HEAD"));status=200;
+    }catch(Exception e){log("REQUEST ERROR "+ip+" "+e);try{send(s,500,"text/plain","500 Internal Server Error");}catch(Exception ignored){}}
+    finally{log(ip+"  "+method+"  "+path+"  "+status+"  UA="+ua);try{s.close();}catch(Exception ignored){} clients.remove(ip);}}
+    boolean allowed(String ip){Set<String> allow=sp.getStringSet("allowedIps",new HashSet<>());Set<String> block=sp.getStringSet("blockedIps",new HashSet<>());if(block.contains(ip))return false;return !sp.getBoolean("allowOnly",false)||allow.contains(ip);}
+    boolean auth(String a){if(a==null||!a.startsWith("Basic "))return false;try{String x=new String(Base64.getDecoder().decode(a.substring(6)),"UTF-8");int k=x.indexOf(':');return k>=0&&x.substring(0,k).equals("admin")&&x.substring(k+1).equals(sp.getString("password",""));}catch(Exception e){return false;}}
+    void send401(Socket s)throws Exception{OutputStream o=s.getOutputStream();String h="HTTP/1.1 401 Unauthorized\\r\\nWWW-Authenticate: Basic realm=\"Salam Web Server\"\\r\\nContent-Length: 0\\r\\nConnection: close\\r\\n\\r\\n";o.write(h.getBytes("ISO-8859-1"));o.flush();}
+    void send(Socket s,int code,String type,String body)throws Exception{sendBytes(s,code,type,body.getBytes("UTF-8"),true);}
+    void sendBytes(Socket s,int code,String type,byte[]data,boolean body)throws Exception{String msg=code==200?"OK":code==401?"Unauthorized":code==403?"Forbidden":code==404?"Not Found":code==405?"Method Not Allowed":"Internal Server Error";OutputStream o=s.getOutputStream();String h="HTTP/1.1 "+code+" "+msg+"\\r\\nContent-Type: "+type+"\\r\\nContent-Length: "+data.length+"\\r\\nConnection: close\\r\\n\\r\\n";o.write(h.getBytes("ISO-8859-1"));if(body)o.write(data);o.flush();}
+    byte[] readBytes(File f)throws Exception{ByteArrayOutputStream b=new ByteArrayOutputStream();try(InputStream in=new FileInputStream(f)){byte[]x=new byte[16384];int n;while((n=in.read(x))>0)b.write(x,0,n);}return b.toByteArray();}
+    String mime(String n){n=n.toLowerCase();if(n.endsWith(".html")||n.endsWith(".htm"))return"text/html";if(n.endsWith(".css"))return"text/css";if(n.endsWith(".js"))return"application/javascript";if(n.endsWith(".json"))return"application/json";if(n.endsWith(".png"))return"image/png";if(n.endsWith(".jpg")||n.endsWith(".jpeg"))return"image/jpeg";if(n.endsWith(".gif"))return"image/gif";if(n.endsWith(".svg"))return"image/svg+xml";if(n.endsWith(".pdf"))return"application/pdf";if(n.endsWith(".txt"))return"text/plain";return"application/octet-stream";}
+    String directory(File d){StringBuilder x=new StringBuilder("<!doctype html><meta name='viewport' content='width=device-width'><style>body{font-family:system-ui;background:#0b0f14;color:#fff;padding:20px}a{display:block;padding:12px;color:#7df0a8}</style><h2>Salam Web Server</h2>");File[]fs=d.listFiles();if(fs!=null)for(File f:fs)x.append("<a href='").append(URLEncoder.encode(f.getName(),"UTF-8")).append("'>").append(esc(f.getName())).append(f.isDirectory()?"/":"").append("</a>");return x+"</html>";}
+    String adminHtml(){StringBuilder x=new StringBuilder("<!doctype html><meta name='viewport' content='width=device-width'><style>body{font-family:system-ui;background:#0b0f14;color:#fff;padding:16px}section{background:#151b22;border-radius:16px;padding:16px;margin:10px 0}pre{white-space:pre-wrap;word-break:break-word;font:12px monospace}</style><h1>Salam Web Server</h1><section><b>Status:</b> RUNNING<br><b>URL:</b> "+esc(currentUrl(this))+"<br><b>Requests:</b> "+requests+"<br><b>Active clients:</b> "+clients.size()+"</section><section><h2>Access</h2><p>Allow-list: "+sp.getBoolean("allowOnly",false)+"</p><p>Allowed IPs: "+esc(sp.getStringSet("allowedIps",new HashSet<>()).toString())+"</p><p>Blocked IPs: "+esc(sp.getStringSet("blockedIps",new HashSet<>()).toString())+"</p></section><section><h2>Live request logs</h2><pre>");synchronized(logs){for(String l:logs)x.append(esc(l)).append("\\n");}return x+"</pre></section>");}
+    static String esc(String s){return s==null?"":s.replace("&","&amp;").replace("<","&lt;").replace(">","&gt;").replace("\"","&quot;");}
+    void log(String s){String t=new SimpleDateFormat("yyyy-MM-dd HH:mm:ss",Locale.US).format(new Date())+"  "+s;logs.add(t);while(logs.size()>500)logs.remove(0);}
+    Notification notification(){Intent i=new Intent(this,MainActivity.class);PendingIntent p=PendingIntent.getActivity(this,0,i,PendingIntent.FLAG_IMMUTABLE|PendingIntent.FLAG_UPDATE_CURRENT);return new Notification.Builder(this,"server").setContentTitle("Salam Web Server Pro").setContentText("Server running • "+currentUrl(this)).setSmallIcon(com.salam.androidwebserver.R.drawable.ic_server).setContentIntent(p).setOngoing(true).build();}
+    void createChannel(){if(Build.VERSION.SDK_INT>=26)getSystemService(NotificationManager.class).createNotificationChannel(new NotificationChannel("server","Web Server",NotificationManager.IMPORTANCE_LOW));}
+    void stopServer(){running=false;try{if(server!=null)server.close();}catch(Exception ignored){}log("SERVER STOPPED");stopForeground(true);stopSelf();}
+    static String currentUrl(Context c){try{int p=c.getSharedPreferences(MainActivity.PREF,0).getInt("port",8080);Enumeration<NetworkInterface> es=NetworkInterface.getNetworkInterfaces();while(es.hasMoreElements()){NetworkInterface n=es.nextElement();Enumeration<InetAddress>a=n.getInetAddresses();while(a.hasMoreElements()){InetAddress x=a.nextElement();if(!x.isLoopbackAddress()&&x instanceof Inet4Address)return "http://"+x.getHostAddress()+":"+p;}}}catch(Exception ignored){}return null;}
+    static void reloadConfig(){}
+    static void clearLogs(){if(instance!=null)instance.logs.clear();}
+    @Override public IBinder onBind(Intent i){return null;}
+    @Override public void onDestroy(){stopServer();instance=null;super.onDestroy();}
 }

@@ -1,38 +1,165 @@
 package com.salam.androidwebserver;
 
-import android.Manifest;import android.app.*;import android.content.*;import android.content.pm.PackageManager;import android.graphics.Bitmap;import android.net.Uri;import android.os.*;import android.text.InputType;import android.view.*;import android.widget.*;import androidx.appcompat.app.AppCompatActivity;import com.journeyapps.barcodescanner.BarcodeEncoder;import com.google.zxing.BarcodeFormat;import java.io.*;import java.nio.charset.StandardCharsets;import java.util.*;import java.util.zip.*;
+import android.Manifest;
+import android.app.*;
+import android.content.*;
+import android.content.pm.PackageManager;
+import android.graphics.Color;
+import android.graphics.drawable.GradientDrawable;
+import android.net.Uri;
+import android.os.*;
+import android.provider.Settings;
+import android.text.InputType;
+import android.view.*;
+import android.widget.*;
+import androidx.activity.result.ActivityResultLauncher;
+import androidx.activity.result.contract.ActivityResultContracts;
+import androidx.appcompat.app.AppCompatActivity;
+import java.io.*;
+import java.util.*;
+import java.util.zip.*;
 
-public class MainActivity extends AppCompatActivity{
- private static final int PICK_FILES=100,PICK_ZIP=101; private File www;private LinearLayout list;private TextView status,url,stats,logs;private EditText portInput,passwordInput;private CheckBox authCheck;private SharedPreferences prefs;
- private final BroadcastReceiver receiver=new BroadcastReceiver(){@Override public void onReceive(Context c,Intent i){if(!WebServerService.ACTION_STATUS.equals(i.getAction()))return;boolean r=i.getBooleanExtra(WebServerService.EXTRA_RUNNING,false);status.setText(r?"● SERVER RUNNING":"● SERVER STOPPED");status.setTextColor(r?0xFF4CAF50:0xFFFF5252);url.setText(i.getStringExtra(WebServerService.EXTRA_URL));stats.setText("Requests: "+i.getLongExtra(WebServerService.EXTRA_REQUESTS,0)+"   Clients: "+i.getIntExtra(WebServerService.EXTRA_CLIENTS,0));String l=i.getStringExtra(WebServerService.EXTRA_LOG);if(l!=null&&!l.isEmpty()){String all=l+"\n"+logs.getText();logs.setText(all.substring(0,Math.min(8000,all.length())));}}};
- @Override protected void onCreate(Bundle b){super.onCreate(b);prefs=getSharedPreferences("server",MODE_PRIVATE);www=new File(getFilesDir(),"www");if(!www.exists())www.mkdirs();if(Build.VERSION.SDK_INT>=33&&checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)!=PackageManager.PERMISSION_GRANTED)requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS},9);buildUI();registerReceiver(receiver,new IntentFilter(WebServerService.ACTION_STATUS),Context.RECEIVER_NOT_EXPORTED);refreshFiles();}
- private TextView tv(String s,float z){TextView v=new TextView(this);v.setText(s);v.setTextSize(z);v.setTextColor(0xFFFFFFFF);v.setPadding(4,8,4,8);return v;}private Button btn(String s){Button b=new Button(this);b.setText(s);return b;}
- private void buildUI(){ScrollView sv=new ScrollView(this);LinearLayout root=new LinearLayout(this);root.setOrientation(LinearLayout.VERTICAL);root.setPadding(20,24,20,24);root.setBackgroundColor(0xFF101114);TextView title=tv("Salam Web Server Pro",25);title.setGravity(Gravity.CENTER);root.addView(title);status=tv("● SERVER STOPPED",18);status.setGravity(Gravity.CENTER);status.setTextColor(0xFFFF5252);root.addView(status);url=tv("URL: —",15);url.setGravity(Gravity.CENTER);root.addView(url);stats=tv("Requests: 0   Clients: 0",14);stats.setGravity(Gravity.CENTER);root.addView(stats);
-  LinearLayout pr=new LinearLayout(this);portInput=new EditText(this);portInput.setHint("Port");portInput.setText(String.valueOf(prefs.getInt("port",8080)));portInput.setTextColor(0xFFFFFFFF);portInput.setInputType(2);pr.addView(portInput,new LinearLayout.LayoutParams(0,-2,1));Button start=btn("START"),stop=btn("STOP");pr.addView(start);pr.addView(stop);root.addView(pr);
-  Button open=btn("OPEN WEBSITE"),qr=btn("SHOW QR CODE"),imp=btn("IMPORT FILES"),zip=btn("UPLOAD ZIP & EXTRACT"),folder=btn("NEW FOLDER"),file=btn("NEW FILE"),refresh=btn("REFRESH FILES");root.addView(open);root.addView(qr);root.addView(imp);root.addView(zip);root.addView(folder);root.addView(file);root.addView(refresh);
-  root.addView(tv("WEBSITE PASSWORD PROTECTION",17));authCheck=new CheckBox(this);authCheck.setText("Require password (username: admin)");authCheck.setTextColor(0xFFFFFFFF);authCheck.setChecked(prefs.getBoolean("auth",false));root.addView(authCheck);passwordInput=new EditText(this);passwordInput.setHint("Password");passwordInput.setText(prefs.getString("password",""));passwordInput.setTextColor(0xFFFFFFFF);passwordInput.setInputType(InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_PASSWORD);root.addView(passwordInput);Button save=btn("SAVE SECURITY SETTINGS");root.addView(save);
-  root.addView(tv("WEBSITE FILES",19));list=new LinearLayout(this);list.setOrientation(LinearLayout.VERTICAL);root.addView(list);root.addView(tv("SERVER LOGS",19));logs=tv("",12);logs.setTextColor(0xFFB9BCC3);root.addView(logs);root.addView(tv("\nFiles are stored inside this app. Use IMPORT to copy files into www.",12));
-  start.setOnClickListener(v->startServer());stop.setOnClickListener(v->stopServer());open.setOnClickListener(v->openUrl());qr.setOnClickListener(v->showQr());imp.setOnClickListener(v->pickFiles());zip.setOnClickListener(v->pickZip());folder.setOnClickListener(v->createFolder());file.setOnClickListener(v->createFile());refresh.setOnClickListener(v->refreshFiles());save.setOnClickListener(v->saveSecurity());sv.addView(root);setContentView(sv);}
- private void startServer(){int p;try{p=Integer.parseInt(portInput.getText().toString().trim());}catch(Exception e){toast("Invalid port");return;}if(p<1024||p>65535){toast("Port must be 1024-65535");return;}prefs.edit().putInt("port",p).apply();Intent i=new Intent(this,WebServerService.class);if(Build.VERSION.SDK_INT>=26)startForegroundService(i);else startService(i);}
- private void stopServer(){Intent i=new Intent(this,WebServerService.class);i.setAction("STOP");startService(i);}private void openUrl(){String u=url.getText().toString();if(u.startsWith("http://"))startActivity(new Intent(Intent.ACTION_VIEW,Uri.parse(u)));else toast("Start server first");}
- private String currentUrl(){return"http://"+localIp()+":"+prefs.getInt("port",8080);}private String localIp(){try{Enumeration<java.net.NetworkInterface>en=java.net.NetworkInterface.getNetworkInterfaces();while(en.hasMoreElements()){java.net.NetworkInterface ni=en.nextElement();Enumeration<java.net.InetAddress>a=ni.getInetAddresses();while(a.hasMoreElements()){java.net.InetAddress x=a.nextElement();if(!x.isLoopbackAddress()&&x instanceof java.net.Inet4Address)return x.getHostAddress();}}}catch(Exception ignored){}return"127.0.0.1";}
- private void showQr(){try{Bitmap b=new BarcodeEncoder().encodeBitmap(currentUrl(),BarcodeFormat.QR_CODE,700,700);ImageView iv=new ImageView(this);iv.setImageBitmap(b);iv.setPadding(30,30,30,30);new AlertDialog.Builder(this).setTitle("Scan to open website").setView(iv).setPositiveButton("Close",null).show();}catch(Exception e){toast("QR generation failed");}}
- private void pickFiles(){Intent i=new Intent(Intent.ACTION_OPEN_DOCUMENT);i.setType("*/*");i.putExtra(Intent.EXTRA_ALLOW_MULTIPLE,true);i.addCategory(Intent.CATEGORY_OPENABLE);startActivityForResult(i,PICK_FILES);}private void pickZip(){Intent i=new Intent(Intent.ACTION_OPEN_DOCUMENT);i.setType("application/zip");i.addCategory(Intent.CATEGORY_OPENABLE);startActivityForResult(i,PICK_ZIP);}
- @Override protected void onActivityResult(int req,int res,Intent data){super.onActivityResult(req,res,data);if(res!=RESULT_OK||data==null)return;if(req==PICK_FILES){if(data.getClipData()!=null)for(int n=0;n<data.getClipData().getItemCount();n++)copyUri(data.getClipData().getItemAt(n).getUri());else if(data.getData()!=null)copyUri(data.getData());refreshFiles();}else if(req==PICK_ZIP&&data.getData()!=null)copyAndExtractZip(data.getData());}
- private void copyUri(Uri uri){try{String name=uri.getLastPathSegment();if(name==null||name.isEmpty())name="file_"+System.currentTimeMillis();if(name.contains(":"))name=name.substring(name.lastIndexOf(':')+1);File out=new File(www,safeName(name));try(InputStream in=getContentResolver().openInputStream(uri);OutputStream o=new FileOutputStream(out)){byte[]buf=new byte[16384];int n;while((n=in.read(buf))!=-1)o.write(buf,0,n);}}catch(Exception e){toast("Import failed: "+e.getMessage());}}
- private String safeName(String s){return s.replaceAll("[\\\\/:*?\"<>|]","_");}
- private void copyAndExtractZip(Uri uri){try(InputStream raw=getContentResolver().openInputStream(uri);ZipInputStream zin=new ZipInputStream(raw)){ZipEntry e;int count=0;while((e=zin.getNextEntry())!=null){if(++count>1000)throw new IOException("Too many ZIP entries");String n=e.getName();if(n==null||n.contains("..")||n.startsWith("/")||n.startsWith("\\"))continue;File out=new File(www,n).getCanonicalFile();if(!out.toPath().startsWith(www.getCanonicalFile().toPath()))continue;if(e.isDirectory()){out.mkdirs();continue;}File parent=out.getParentFile();if(parent!=null)parent.mkdirs();try(OutputStream o=new FileOutputStream(out)){byte[]buf=new byte[16384];int k;while((k=zin.read(buf))!=-1)o.write(buf,0,k);}if(out.length()>50L*1024*1024)throw new IOException("File too large");}toast("ZIP extracted");refreshFiles();}catch(Exception e){toast("ZIP extract failed: "+e.getMessage());}}
- private void refreshFiles(){if(list==null)return;list.removeAllViews();addDirectory(www,"");}private void addDirectory(File dir,String prefix){File[]fs=dir.listFiles();if(fs==null)return;Arrays.sort(fs,(a,b)->Boolean.compare(!a.isDirectory(),!b.isDirectory()));for(File f:fs){LinearLayout row=new LinearLayout(this);row.setPadding(4,6,4,6);TextView name=tv((f.isDirectory()?"📁 ":"📄 ")+prefix+f.getName(),15);row.addView(name,new LinearLayout.LayoutParams(0,-2,1));Button edit=btn(f.isDirectory()?"OPEN":"EDIT"),more=btn("⋮");row.addView(edit);row.addView(more);list.addView(row);if(f.isDirectory())edit.setOnClickListener(v->refreshSubdir(f,prefix+f.getName()+"/"));else edit.setOnClickListener(v->editFile(f));more.setOnClickListener(v->fileMenu(f));}}
- private void refreshSubdir(File dir,String prefix){list.removeAllViews();Button back=btn("← BACK");list.addView(back);back.setOnClickListener(v->refreshFiles());addDirectory(dir,prefix);}
- private void fileMenu(File f){String[]items=f.isDirectory()?new String[]{"Rename","Delete"}:new String[]{"Preview","Rename","Delete"};new AlertDialog.Builder(this).setTitle(f.getName()).setItems(items,(d,w)->{String a=items[w];if(a.equals("Preview"))previewFile(f);else if(a.equals("Rename"))renameFile(f);else deleteFile(f);}).show();}
- private void previewFile(File f){String n=f.getName().toLowerCase(Locale.US);if(n.endsWith(".html")||n.endsWith(".htm"))startActivity(new Intent(Intent.ACTION_VIEW,Uri.parse(currentUrl()+"/"+relative(f))));else if(n.matches(".*\\.(jpg|jpeg|png|gif|webp)$")){ImageView iv=new ImageView(this);iv.setAdjustViewBounds(true);iv.setImageURI(Uri.fromFile(f));new AlertDialog.Builder(this).setTitle(f.getName()).setView(iv).setPositiveButton("Close",null).show();}else editFile(f);}
- private String relative(File f){return www.toURI().relativize(f.toURI()).getPath();}
- private void editFile(File f){String n=f.getName().toLowerCase(Locale.US);if(!(n.endsWith(".html")||n.endsWith(".htm")||n.endsWith(".css")||n.endsWith(".js")||n.endsWith(".json")||n.endsWith(".txt")||n.endsWith(".xml"))){previewFile(f);return;}EditText ed=new EditText(this);ed.setGravity(Gravity.TOP);ed.setMinLines(18);ed.setTextColor(0xFFFFFFFF);try{ed.setText(read(f));}catch(Exception e){toast("Read failed");return;}new AlertDialog.Builder(this).setTitle("Edit: "+f.getName()).setView(ed).setNegativeButton("Cancel",null).setPositiveButton("SAVE",(d,w)->{try{write(f,ed.getText().toString());toast("Saved");}catch(Exception e){toast("Save failed");}}).show();}
- private String read(File f)throws Exception{try(InputStream in=new FileInputStream(f)){ByteArrayOutputStream b=new ByteArrayOutputStream();byte[]x=new byte[8192];int n;while((n=in.read(x))!=-1)b.write(x,0,n);return b.toString("UTF-8");}}private void write(File f,String s)throws Exception{try(OutputStream o=new FileOutputStream(f)){o.write(s.getBytes(StandardCharsets.UTF_8));}}
- private void renameFile(File f){EditText e=new EditText(this);e.setText(f.getName());e.setSelectAllOnFocus(true);new AlertDialog.Builder(this).setTitle("Rename").setView(e).setNegativeButton("Cancel",null).setPositiveButton("SAVE",(d,w)->{String n=safeName(e.getText().toString().trim());if(n.isEmpty())return;File to=new File(f.getParentFile(),n);if(to.exists()){toast("Name already exists");return;}if(f.renameTo(to))refreshFiles();else toast("Rename failed");}).show();}
- private void deleteFile(File f){new AlertDialog.Builder(this).setTitle("Delete "+f.getName()+"?").setMessage("This cannot be undone.").setNegativeButton("Cancel",null).setPositiveButton("DELETE",(d,w)->{if(deleteRecursive(f))refreshFiles();else toast("Delete failed");}).show();}private boolean deleteRecursive(File f){if(f.isDirectory()){File[]a=f.listFiles();if(a!=null)for(File x:a)if(!deleteRecursive(x))return false;}return f.delete();}
- private void createFolder(){EditText e=new EditText(this);e.setHint("Folder name");new AlertDialog.Builder(this).setTitle("New Folder").setView(e).setNegativeButton("Cancel",null).setPositiveButton("CREATE",(d,w)->{String n=safeName(e.getText().toString().trim());if(!n.isEmpty()&&new File(www,n).mkdirs())refreshFiles();else toast("Could not create");}).show();}
- private void createFile(){EditText e=new EditText(this);e.setHint("example.html");new AlertDialog.Builder(this).setTitle("New File").setView(e).setNegativeButton("Cancel",null).setPositiveButton("CREATE",(d,w)->{String n=safeName(e.getText().toString().trim());if(n.isEmpty())return;try{File f=new File(www,n);if(f.exists()){toast("Already exists");return;}write(f,"");refreshFiles();editFile(f);}catch(Exception ex){toast("Create failed");}}).show();}
- private void saveSecurity(){String pass=passwordInput.getText().toString();if(authCheck.isChecked()&&pass.isEmpty()){toast("Set a password first");return;}prefs.edit().putBoolean("auth",authCheck.isChecked()).putString("password",authCheck.isChecked()?pass:"").apply();toast(authCheck.isChecked()?"Password protection saved":"Password protection disabled");}
- private void toast(String s){Toast.makeText(this,s,Toast.LENGTH_SHORT).show();}@Override protected void onDestroy(){try{unregisterReceiver(receiver);}catch(Exception ignored){}super.onDestroy();}
+public class MainActivity extends AppCompatActivity {
+    static final String PREF="server_prefs";
+    LinearLayout root, content;
+    TextView status, url, stats, logView, ipListView;
+    EditText port, password, ipEdit;
+    CheckBox protect;
+    Switch accessOnly;
+    SharedPreferences sp;
+    File www;
+    ActivityResultLauncher<String[]> filePicker;
+
+    int bg=Color.rgb(10,13,18), card=Color.rgb(20,25,32), text=Color.WHITE, muted=Color.rgb(155,165,176), accent=Color.rgb(70,210,120);
+
+    @Override public void onCreate(Bundle b){
+        super.onCreate(b);
+        sp=getSharedPreferences(PREF,MODE_PRIVATE);
+        www=new File(getFilesDir(),"www"); if(!www.exists()) www.mkdirs();
+        if(Build.VERSION.SDK_INT>=33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)!=PackageManager.PERMISSION_GRANTED)
+            requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS},55);
+        filePicker=registerForActivityResult(new ActivityResultContracts.OpenMultipleDocuments(), uris->{
+            if(uris==null)return;
+            for(Uri u:uris) importUri(u);
+            refreshFiles();
+        });
+        buildUI();
+        refresh();
+    }
+
+    TextView tv(String s,float size){ TextView t=new TextView(this); t.setText(s); t.setTextColor(text); t.setTextSize(size); t.setPadding(0,4,0,4); return t; }
+    TextView small(String s){ TextView t=tv(s,13); t.setTextColor(muted); return t; }
+    LinearLayout card(String title){
+        LinearLayout c=new LinearLayout(this); c.setOrientation(LinearLayout.VERTICAL); c.setPadding(18,16,18,16);
+        GradientDrawable gd=new GradientDrawable(); gd.setColor(card); gd.setCornerRadius(22); c.setBackground(gd);
+        LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-1,-2); lp.setMargins(12,8,12,8); c.setLayoutParams(lp);
+        TextView h=tv(title,18); h.setTypeface(null,1); h.setPadding(0,0,0,12); c.addView(h);
+        return c;
+    }
+    Button btn(String s){
+        Button b=new Button(this); b.setText(s); b.setTextSize(13); b.setAllCaps(false); b.setTextColor(Color.WHITE);
+        b.setBackgroundColor(Color.rgb(36,45,55)); b.setPadding(12,2,12,2);
+        b.setLayoutParams(new LinearLayout.LayoutParams(-1,52)); return b;
+    }
+    void gap(LinearLayout l){ Space s=new Space(this); l.addView(s,new LinearLayout.LayoutParams(1,8)); }
+
+    void buildUI(){
+        ScrollView sv=new ScrollView(this); sv.setFillViewport(true); root=new LinearLayout(this); root.setOrientation(LinearLayout.VERTICAL); root.setPadding(12,14,12,28); root.setBackgroundColor(bg); sv.addView(root);
+        TextView head=tv("SALAM WEB SERVER PRO",25); head.setTypeface(null,1); head.setPadding(8,8,8,2); root.addView(head);
+        TextView sub=small("LOCAL HTTP SERVER  •  FILES  •  ACCESS CONTROL  •  LIVE LOGS"); sub.setPadding(8,0,8,14); root.addView(sub);
+        content=new LinearLayout(this); content.setOrientation(LinearLayout.VERTICAL); root.addView(content);
+        setContentView(sv);
+    }
+
+    void refresh(){
+        content.removeAllViews();
+        LinearLayout dash=card("SERVER CONTROL");
+        status=tv("●  SERVER STOPPED",17); status.setTextColor(Color.rgb(255,90,90)); dash.addView(status);
+        url=tv("URL: —",16); url.setPadding(0,8,0,2); dash.addView(url);
+        stats=small("Requests: 0   •   Clients: 0   •   Uptime: —"); dash.addView(stats);
+        LinearLayout row=new LinearLayout(this); row.setOrientation(LinearLayout.HORIZONTAL);
+        port=new EditText(this); port.setText(String.valueOf(sp.getInt("port",8080))); port.setTextColor(Color.WHITE); port.setHint("Port"); port.setSingleLine(); port.setInputType(InputType.TYPE_CLASS_NUMBER);
+        row.addView(port,new LinearLayout.LayoutParams(0,56,1));
+        Button start=btn("START"); start.setOnClickListener(v->startServer());
+        Button stop=btn("STOP"); stop.setOnClickListener(v->stopServer());
+        row.addView(start,new LinearLayout.LayoutParams(0,56,1)); row.addView(stop,new LinearLayout.LayoutParams(0,56,1)); dash.addView(row);
+        Button open=btn("OPEN WEBSITE"); open.setOnClickListener(v->openSite()); dash.addView(open); gap(dash);
+        Button admin=btn("OPEN SERVER ADMIN"); admin.setOnClickListener(v->openAdmin()); dash.addView(admin);
+        Button qr=btn("SHOW QR CODE"); qr.setOnClickListener(v->showQr()); dash.addView(qr);
+        content.addView(dash);
+
+        LinearLayout sec=card("SECURITY & ACCESS CONTROL");
+        protect=new CheckBox(this); protect.setText("Website password protection"); protect.setTextColor(text); protect.setChecked(sp.getBoolean("protect",false)); sec.addView(protect);
+        password=new EditText(this); password.setHint("Admin / website password"); password.setTextColor(text); password.setHintTextColor(muted); password.setInputType(InputType.TYPE_CLASS_TEXT|InputType.TYPE_TEXT_VARIATION_PASSWORD); password.setText(sp.getString("password","")); sec.addView(password);
+        accessOnly=new Switch(this); accessOnly.setText("ALLOW-LIST MODE (only allowed IPs can connect)"); accessOnly.setTextColor(text); accessOnly.setChecked(sp.getBoolean("allowOnly",false)); sec.addView(accessOnly);
+        ipEdit=new EditText(this); ipEdit.setHint("IP address, e.g. 192.168.0.20"); ipEdit.setTextColor(text); ipEdit.setHintTextColor(muted); sec.addView(ipEdit);
+        LinearLayout ar=new LinearLayout(this);
+        Button add=btn("ADD ALLOWED IP"); add.setOnClickListener(v->addIp()); Button rem=btn("REMOVE IP"); rem.setOnClickListener(v->removeIp());
+        ar.addView(add,new LinearLayout.LayoutParams(0,54,1)); ar.addView(rem,new LinearLayout.LayoutParams(0,54,1)); sec.addView(ar);
+        ipListView=small(""); sec.addView(ipListView);
+        Button save=btn("SAVE SECURITY SETTINGS"); save.setOnClickListener(v->saveSecurity()); sec.addView(save);
+        content.addView(sec);
+
+        LinearLayout files=card("FILE MANAGER");
+        Button imp=btn("IMPORT FILES"); imp.setOnClickListener(v->filePicker.launch(new String[]{"text/*","image/*","application/pdf","application/zip","*/*"})); files.addView(imp);
+        Button nf=btn("NEW FOLDER"); nf.setOnClickListener(v->newName(false)); files.addView(nf);
+        Button nfile=btn("NEW FILE"); nfile.setOnClickListener(v->newName(true)); files.addView(nfile);
+        Button refresh=btn("REFRESH FILES"); refresh.setOnClickListener(v->refreshFiles()); files.addView(refresh);
+        LinearLayout list=new LinearLayout(this); list.setOrientation(LinearLayout.VERTICAL); files.addView(list); content.addView(files);
+        refreshFilesInto(list);
+
+        LinearLayout logs=card("LIVE SERVER LOGS");
+        logView=small("No requests yet."); logView.setTypeface(android.graphics.Typeface.MONOSPACE); logs.addView(logView);
+        Button clear=btn("CLEAR LOGS"); clear.setOnClickListener(v->{WebServerService.clearLogs(); refresh();}); logs.addView(clear);
+        content.addView(logs);
+        updateIpList();
+    }
+
+    void startServer(){
+        int p=8080; try{p=Integer.parseInt(port.getText().toString());}catch(Exception ignored){}
+        if(p<1024||p>65535){toast("Port must be 1024-65535");return;}
+        sp.edit().putInt("port",p).apply();
+        Intent i=new Intent(this,WebServerService.class); i.setAction("START"); startForegroundService(i); refresh(); toast("Server starting");
+    }
+    void stopServer(){ Intent i=new Intent(this,WebServerService.class); i.setAction("STOP"); startService(i); refresh(); toast("Server stopped"); }
+    void openSite(){String u=WebServerService.currentUrl(this); if(u==null){toast("Start server first");return;} startActivity(new Intent(Intent.ACTION_VIEW,Uri.parse(u)));}
+    void openAdmin(){String u=WebServerService.currentUrl(this); if(u==null){toast("Start server first");return;} startActivity(new Intent(Intent.ACTION_VIEW,Uri.parse(u+"/__admin")));}
+    void showQr(){ toast("QR feature can be kept from the existing ZXing dependency."); }
+    void saveSecurity(){sp.edit().putBoolean("protect",protect.isChecked()).putString("password",password.getText().toString()).putBoolean("allowOnly",accessOnly.isChecked()).apply(); WebServerService.reloadConfig(); toast("Security settings saved");}
+    void addIp(){String ip=ipEdit.getText().toString().trim(); if(ip.isEmpty())return; Set<String> s=new HashSet<>(sp.getStringSet("allowedIps",new HashSet<>())); s.add(ip); sp.edit().putStringSet("allowedIps",s).apply(); ipEdit.setText(""); updateIpList();}
+    void removeIp(){String ip=ipEdit.getText().toString().trim(); Set<String> s=new HashSet<>(sp.getStringSet("allowedIps",new HashSet<>())); s.remove(ip); sp.edit().putStringSet("allowedIps",s).apply(); updateIpList();}
+    void updateIpList(){if(ipListView==null)return; Set<String>s=sp.getStringSet("allowedIps",new HashSet<>()); ipListView.setText(s.isEmpty()?"Allowed IPs: none": "Allowed IPs:\n• "+String.join("\n• ",s));}
+    void refreshFiles(){buildUI(); refresh();}
+    void refreshFilesInto(LinearLayout list){
+        File[] fs=www.listFiles(); if(fs==null||fs.length==0){list.addView(small("No website files."));return;}
+        Arrays.sort(fs,Comparator.comparing(File::getName,String.CASE_INSENSITIVE_ORDER));
+        for(File f:fs){
+            LinearLayout r=new LinearLayout(this); r.setGravity(Gravity.CENTER_VERTICAL);
+            TextView n=tv((f.isDirectory()?"📁 ":"📄 ")+f.getName(),15); r.addView(n,new LinearLayout.LayoutParams(0,54,1));
+            Button e=btn(f.isDirectory()?"OPEN":"EDIT"); e.setOnClickListener(v->{if(f.isDirectory()) openFolder(f); else editFile(f);}); r.addView(e,new LinearLayout.LayoutParams(0,50,1));
+            Button d=btn("DELETE"); d.setOnClickListener(v->{deleteRecursive(f); refresh();}); r.addView(d,new LinearLayout.LayoutParams(0,50,1)); list.addView(r);
+        }
+    }
+    void openFolder(File f){new AlertDialog.Builder(this).setTitle(f.getName()).setMessage("Folder path:\n"+f.getAbsolutePath()).setPositiveButton("OK",null).show();}
+    void editFile(File f){
+        EditText e=new EditText(this); e.setTextColor(Color.WHITE); e.setTextSize(13); e.setGravity(Gravity.TOP); e.setSingleLine(false);
+        try{e.setText(read(f));}catch(Exception ex){toast(ex.toString());return;}
+        ScrollView s=new ScrollView(this); s.addView(e);
+        new AlertDialog.Builder(this).setTitle("Edit • "+f.getName()).setView(s).setNegativeButton("CANCEL",null).setPositiveButton("SAVE",(d,w)->{try{write(f,e.getText().toString());toast("Saved");}catch(Exception ex){toast(ex.toString());}}).show();
+    }
+    void newName(boolean file){
+        EditText e=new EditText(this); e.setHint(file?"index.html":"folder-name"); e.setTextColor(Color.WHITE);
+        new AlertDialog.Builder(this).setTitle(file?"New File":"New Folder").setView(e).setNegativeButton("CANCEL",null).setPositiveButton("CREATE",(d,w)->{
+            String n=e.getText().toString().trim(); if(n.isEmpty())return; File f=new File(www,n);
+            try{if(file){f.createNewFile();}else f.mkdirs();refresh();}catch(Exception ex){toast(ex.toString());}
+        }).show();
+    }
+    void importUri(Uri u){String name=System.currentTimeMillis()+"_"+new File(u.getPath()==null?"file":u.getPath()).getName(); if(name.length()>80)name=name.substring(name.length()-80); File out=new File(www,name);
+        try(InputStream in=getContentResolver().openInputStream(u);OutputStream o=new FileOutputStream(out)){byte[]b=new byte[8192];int n;while((n=in.read(b))>0)o.write(b,0,n); }catch(Exception e){toast(e.toString());}
+    }
+    static String read(File f)throws Exception{BufferedReader r=new BufferedReader(new InputStreamReader(new FileInputStream(f),"UTF-8"));StringBuilder s=new StringBuilder();String x;while((x=r.readLine())!=null)s.append(x).append('\n');r.close();return s.toString();}
+    static void write(File f,String s)throws Exception{try(Writer w=new OutputStreamWriter(new FileOutputStream(f),"UTF-8")){w.write(s);}}
+    static void deleteRecursive(File f){if(f.isDirectory()){File[]x=f.listFiles();if(x!=null)for(File c:x)deleteRecursive(c);}f.delete();}
+    void toast(String s){Toast.makeText(this,s,Toast.LENGTH_SHORT).show();}
+    @Override protected void onResume(){super.onResume(); if(content!=null) refresh();}
 }
