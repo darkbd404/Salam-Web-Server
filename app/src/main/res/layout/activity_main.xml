@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+ android:orientation="vertical" android:padding="20dp" android:background="#F5F7FA"
+ android:layout_width="match_parent" android:layout_height="match_parent">
+ <TextView android:text="Salam Web Server" android:textSize="28sp" android:textStyle="bold"
+  android:textColor="#111827" android:layout_width="match_parent" android:layout_height="wrap_content"/>
+ <TextView android:id="@+id/status" android:text="● Server stopped" android:textSize="18sp"
+  android:paddingTop="12dp" android:paddingBottom="12dp" android:layout_width="match_parent" android:layout_height="wrap_content"/>
+ <TextView android:id="@+id/url" android:text="URL: -"
+  android:textSize="16sp" android:layout_width="match_parent" android:layout_height="wrap_content"/>
+ <EditText android:id="@+id/port" android:hint="Port (8080)" android:inputType="number"
+  android:text="8080" android:layout_width="match_parent" android:layout_height="wrap_content"/>
+ <Button android:id="@+id/start" android:text="START SERVER" android:layout_width="match_parent" android:layout_height="wrap_content"/>
+ <Button android:id="@+id/stop" android:text="STOP SERVER" android:layout_width="match_parent" android:layout_height="wrap_content"/>
+ <Button android:id="@+id/open" android:text="OPEN WEBSITE" android:layout_width="match_parent" android:layout_height="wrap_content"/>
+ <TextView android:text="Document root: app internal /www
+Put index.html inside the app's www folder." android:textSize="14sp"
+  android:paddingTop="20dp" android:layout_width="match_parent" android:layout_height="wrap_content"/>
+</LinearLayout>
