@@ -1,4 +1,4 @@
-name: Build APK
+name: Build Salam SIP Server v10
 
 on:
   workflow_dispatch:
@@ -12,11 +12,9 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # 1. Checkout source
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # 2. Java 17
       - name: Setup Java 17
         uses: actions/setup-java@v5
         with:
@@ -24,7 +22,6 @@ jobs:
           java-version: '17'
           cache: gradle
 
-      # 3. Find Android SDK
       - name: Setup Android SDK
         shell: bash
         run: |
@@ -33,84 +30,75 @@ jobs:
           echo "ANDROID_HOME=$ANDROID_HOME"
           echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT"
 
-          if [ -n "$ANDROID_HOME" ]; then
-            SDK_ROOT="$ANDROID_HOME"
-          else
-            SDK_ROOT="$ANDROID_SDK_ROOT"
+          SDK_ROOT="${ANDROID_HOME:-$ANDROID_SDK_ROOT}"
+
+          if [ -z "$SDK_ROOT" ]; then
+            echo "ERROR: Android SDK path not found."
+            exit 1
           fi
 
           echo "SDK_ROOT=$SDK_ROOT"
 
-          # Find sdkmanager
-          SDKMANAGER=""
+          SDKMANAGER="$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
 
-          if [ -x "$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" ]; then
-            SDKMANAGER="$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
-          else
+          if [ ! -x "$SDKMANAGER" ]; then
             SDKMANAGER=$(find "$SDK_ROOT/cmdline-tools" \
               -type f \
               -name sdkmanager \
+              -perm -111 \
               2>/dev/null | sort -V | tail -n 1 || true)
           fi
 
           if [ -z "$SDKMANAGER" ]; then
-            echo "ERROR: sdkmanager not found"
-            find "$SDK_ROOT" -maxdepth 4 -type f -name sdkmanager 2>/dev/null || true
+            echo "ERROR: executable sdkmanager not found."
+            find "$SDK_ROOT/cmdline-tools" \
+              -type f \
+              -name sdkmanager \
+              2>/dev/null || true
             exit 1
           fi
 
           echo "Using sdkmanager:"
           echo "$SDKMANAGER"
 
-          chmod +x "$SDKMANAGER"
-
-          # Accept licenses
+          echo "Accepting Android SDK licenses..."
           yes | "$SDKMANAGER" --licenses > /dev/null || true
 
-          # Install required Android SDK packages
+          echo "Installing required SDK packages..."
+
           "$SDKMANAGER" \
             "platform-tools" \
             "platforms;android-35" \
             "build-tools;35.0.0"
 
-          echo "Android SDK ready."
+          echo "Android SDK setup completed."
 
-      # 4. Setup Gradle
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      # 5. Make gradlew executable if wrapper exists
       - name: Prepare Gradle
         shell: bash
         run: |
           if [ -f "./gradlew" ]; then
-            chmod +x ./gradlew
             echo "Gradle wrapper found."
+            chmod +x ./gradlew
           else
             echo "Gradle wrapper not found."
             echo "Using system Gradle."
             gradle --version
           fi
 
-      # 6. Build Debug APK
       - name: Build Debug APK
         shell: bash
         run: |
           set -e
 
           if [ -f "./gradlew" ]; then
-            ./gradlew \
-              assembleDebug \
-              --no-daemon \
-              --stacktrace
+            ./gradlew assembleDebug --no-daemon --stacktrace
           else
-            gradle \
-              assembleDebug \
-              --no-daemon \
-              --stacktrace
+            gradle assembleDebug --no-daemon --stacktrace
           fi
 
-      # 7. Verify APK
       - name: Verify APK
         shell: bash
         run: |
@@ -122,10 +110,11 @@ jobs:
             exit 1
           fi
 
-          echo "APK generated successfully:"
+          echo "================================="
+          echo "APK BUILD SUCCESSFUL"
+          echo "================================="
           ls -lh "$APK"
 
-      # 8. Upload APK
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
