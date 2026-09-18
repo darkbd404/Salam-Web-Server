@@ -17,3 +17,9 @@ This update keeps the existing server/file/security system and focuses on the re
 Use the included GitHub Actions workflow (`Build Salam Web Server v10`) with **Run workflow**.
 
 Android background execution is still subject to Android/OEM battery-management policies; foreground service + wake lock improves persistence but cannot guarantee an absolute 24/7 runtime on every device.
+
+## V10 UI micro-update
+- Server card now has exactly 3 primary controls: Start/Stop Server, Open Web, Admin Control.
+- Tapping the displayed Server URL copies it to the clipboard.
+- After a file upload, the app shows the browser-ready file URL with Copy URL and Open actions.
+- Admin Control opens `/__salam__/`; Web opens the server root.
