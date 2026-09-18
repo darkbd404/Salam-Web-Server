@@ -36,6 +36,7 @@ public class MainActivity extends Activity {
 
     int dp(float x){return (int)(x*getResources().getDisplayMetrics().density+.5f);}
     TextView tv(String s,float size,int color){TextView v=new TextView(this);v.setText(s);v.setTextSize(size);v.setTextColor(color);return v;}
+TextView t(String s,float size,int color){return tv(s,size,color);}
     GradientDrawable gradient(int a,int b,float radius){GradientDrawable g=new GradientDrawable(GradientDrawable.Orientation.TL_BR,new int[]{a,b});g.setCornerRadius(dp(radius));return g;}
     LinearLayout card(){LinearLayout c=new LinearLayout(this);c.setOrientation(LinearLayout.VERTICAL);c.setPadding(dp(14),dp(12),dp(14),dp(12));c.setBackground(gradient(SURFACE,SURFACE2,20));LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(-1,-2);p.setMargins(0,dp(5),0,dp(5));c.setLayoutParams(p);return c;}
     Button blueButton(String s){Button b=new Button(this);b.setText(s);b.setTextSize(13);b.setTextColor(WHITE);b.setAllCaps(false);b.setGravity(Gravity.CENTER);b.setBackground(gradient(BLUE,CYAN,18));return b;}
@@ -45,6 +46,9 @@ public class MainActivity extends Activity {
         super.onCreate(state);
         getWindow().setStatusBarColor(BG);getWindow().setNavigationBarColor(BG);
         pref=getSharedPreferences("server",MODE_PRIVATE);
+        if(pref.getBoolean("autostart",false)){
+            handler.postDelayed(()->server(true),950);
+        }
         if(Build.VERSION.SDK_INT>=33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)!=PackageManager.PERMISSION_GRANTED)
             requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS},20);
         splash();
@@ -112,6 +116,9 @@ public class MainActivity extends Activity {
 
         TextView metrics=tv("",12,WHITE);metrics.setGravity(Gravity.CENTER_VERTICAL);metrics.setPadding(dp(14),0,dp(8),0);metrics.setBackground(gradient(SURFACE,SURFACE2,18));add(body,metrics,-1,70);
         metrics.setText((WebServerService.running?"● Online":"● Offline")+"     Requests: "+WebServerService.requests+"     Clients: "+WebServerService.clients.size()+"\nUptime: "+WebServerService.uptime()+"     RAM: "+WebServerService.memoryText(this));
+Button serverToggle=blueButton(WebServerService.running?"■  Stop Server":"▶  Start Server");
+        serverToggle.setOnClickListener(v->{server(!WebServerService.running);handler.postDelayed(()->show(SCREEN_HOME),350);});
+        body.addView(serverToggle,new LinearLayout.LayoutParams(-1,dp(48)));
 
         section("QUICK ACTIONS");
         LinearLayout grid1=new LinearLayout(this);grid1.setOrientation(LinearLayout.HORIZONTAL);grid1.addView(actionTile("📁","Web Files",()->show(SCREEN_FILES)),new LinearLayout.LayoutParams(0,dp(96),1));grid1.addView(actionTile("⚙","Settings",()->show(SCREEN_SETTINGS)),new LinearLayout.LayoutParams(0,dp(96),1));body.addView(grid1);
@@ -182,7 +189,7 @@ public class MainActivity extends Activity {
         settingRow("👨‍💻","Developer","Abdus Salam • 09696590864",()->show(SCREEN_ABOUT));
         settingRow("💬","Messenger","m.me/Salam.864",()->messenger());
     }
-    void settingRow(String icon,String name,String value,Runnable r){LinearLayout c=card();c.setOrientation(LinearLayout.HORIZONTAL);TextView i=tv(icon,23,WHITE);i.setGravity(Gravity.CENTER);add(c,i,43,53);LinearLayout m=new LinearLayout(this);m.setOrientation(LinearLayout.VERTICAL);add(m,tv(name,14,WHITE),-1,27);TextView v=tv(value,10,MUTED);v.setEllipsize(android.text.TextUtils.TruncateAt.END);v.setSingleLine(true);add(m,v,-1,20);c.addView(m,new LinearLayout.LayoutParams(0,53,1));TextView a=tv("›",28,CYAN);a.setGravity(Gravity.CENTER);add(c,a,25,53);c.setOnClickListener(v->r.run());body.addView(c);}
+    void settingRow(String icon,String name,String value,Runnable r){LinearLayout c=card();c.setOrientation(LinearLayout.HORIZONTAL);TextView i=tv(icon,23,WHITE);i.setGravity(Gravity.CENTER);add(c,i,43,53);LinearLayout m=new LinearLayout(this);m.setOrientation(LinearLayout.VERTICAL);add(m,tv(name,14,WHITE),-1,27);TextView valueView=tv(value,10,MUTED);valueView.setEllipsize(android.text.TextUtils.TruncateAt.END);valueView.setSingleLine(true);add(m,valueView,-1,20);c.addView(m,new LinearLayout.LayoutParams(0,53,1));TextView a=tv("›",28,CYAN);a.setGravity(Gravity.CENTER);add(c,a,25,53);c.setOnClickListener(clickedView->r.run());body.addView(c);}
     void settingSwitch(String icon,String name,String desc,String key){LinearLayout c=card();c.setOrientation(LinearLayout.HORIZONTAL);TextView i=tv(icon,23,WHITE);i.setGravity(Gravity.CENTER);add(c,i,43,53);LinearLayout m=new LinearLayout(this);m.setOrientation(LinearLayout.VERTICAL);add(m,tv(name,14,WHITE),-1,27);add(m,tv(desc,10,MUTED),-1,20);c.addView(m,new LinearLayout.LayoutParams(0,53,1));Switch sw=new Switch(this);sw.setChecked(pref.getBoolean(key,key.equals("allowNetwork")));sw.setOnCheckedChangeListener((b,v)->pref.edit().putBoolean(key,v).apply());add(c,sw,52,53);body.addView(c);}
 
     void network(){
