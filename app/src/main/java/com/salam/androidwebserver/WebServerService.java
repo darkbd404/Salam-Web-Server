@@ -6,71 +6,81 @@ import android.net.*;
 import android.os.*;
 import java.io.*;
 import java.net.*;
-import java.nio.charset.StandardCharsets;
-import java.text.SimpleDateFormat;
+import java.text.*;
 import java.util.*;
 import java.util.concurrent.*;
-import java.util.zip.*;
+import java.util.concurrent.atomic.AtomicInteger;
 
 public class WebServerService extends Service {
     public static volatile boolean running=false;
-    public static volatile long requests=0;
+    public static final AtomicInteger requests=new AtomicInteger(0);
     public static final Set<String> clients=ConcurrentHashMap.newKeySet();
-    static final List<String> LOGS=Collections.synchronizedList(new ArrayList<String>());
-    static final ConcurrentHashMap<String,ArrayDeque<Long>> RATE=new ConcurrentHashMap<>();
-    static ServerSocket socket; static long startedAt;
+    public static final CopyOnWriteArrayList<String> LOGS=new CopyOnWriteArrayList<>();
+    public static final CopyOnWriteArrayList<String> HISTORY=new CopyOnWriteArrayList<>();
+    public static volatile String password="", customHost="";
+    static ServerSocket server;
+    ExecutorService pool=Executors.newCachedThreadPool();
 
-    SharedPreferences pref(){return getSharedPreferences("server",MODE_PRIVATE);}
-    public static File webRoot(Context c){File f=new File(c.getFilesDir(),"www");if(!f.exists())f.mkdirs();File i=new File(f,"index.html");if(!i.exists())try(FileWriter w=new FileWriter(i)){w.write(defaultPage());}catch(Exception ignored){}return f;}
-
-    static String defaultPage(){return "<!doctype html><html><head><meta name='viewport' content='width=device-width,initial-scale=1'><meta http-equiv='refresh' content='5'><title>Salam Web Server</title><style>*{box-sizing:border-box}body{margin:0;background:#030c19;color:#f7faff;font-family:Arial,sans-serif}main{max-width:900px;margin:auto;padding:22px;background:linear-gradient(145deg,#030c19,#092341);min-height:100vh}.brand{font-size:23px;font-weight:800;display:flex;gap:10px;align-items:center}.dot{color:#1cd3ff}.hero{margin-top:22vh;background:linear-gradient(145deg,#071b33,#092a4e);border:1px solid #0c3a68;border-radius:28px;padding:28px;text-align:center;box-shadow:0 20px 60px #0008}.online{display:inline-block;margin-top:10px;padding:9px 16px;border-radius:30px;background:#073d31;color:#12e8a6}.btn{display:inline-block;margin:7px;padding:12px 18px;border-radius:16px;background:linear-gradient(135deg,#0a8bff,#1cd3ff);color:white;text-decoration:none;font-weight:700}.muted{color:#9db7d5}.grid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin-top:18px}.card{padding:18px;border-radius:20px;background:#071b33}.wave{height:80px;margin:20px -22px -22px;background:repeating-radial-gradient(ellipse at 50% 100%,transparent 0 12px,#0a74ee 13px 14px,transparent 15px 30px)}</style></head><body><main><div class='brand'><span class='dot'>▰</span>Salam Web Server</div><section class='hero'><div class='dot'>LOCAL WEB SERVER</div><h1>Browser Control Panel</h1><p class='muted'>Fast • Secure • Local • Android</p><span class='online'>● Online</span><div><a class='btn' href='/'>View Files</a><a class='btn' href='/__salam__/api/info'>Server Info</a></div><div class='grid'><div class='card'><b>Live Dashboard</b><br><span class='muted'>Requests and connected clients</span></div><div class='card'><b>Mobile Friendly</b><br><span class='muted'>Designed for phones and LAN sharing</span></div><div class='card'><b>Fast & Secure</b><br><span class='muted'>IP rules, rate limit and optional login</span></div><div class='card'><b>Developer</b><br><span class='muted'>Abdus Salam</span></div></div><div class='wave'></div></section></main></body></html>";}
-
-    @Override public void onCreate(){super.onCreate();if(Build.VERSION.SDK_INT>=26){NotificationChannel c=new NotificationChannel("salam_server","Salam Web Server",NotificationManager.IMPORTANCE_LOW);((NotificationManager)getSystemService(NOTIFICATION_SERVICE)).createNotificationChannel(c);}}
-    @Override public int onStartCommand(Intent i,int flags,int id){if(i!=null&&"STOP".equals(i.getAction())){stopServer();stopSelf();return START_NOT_STICKY;}startServer();return START_STICKY;}
-    void startServer(){synchronized(WebServerService.class){if(running)return;int port=pref().getInt("port",8080);if(port<1024||port>65535)port=8080;try{socket=new ServerSocket();socket.setReuseAddress(true);socket.bind(new InetSocketAddress("0.0.0.0",port));running=true;requests=0;clients.clear();RATE.clear();startedAt=System.currentTimeMillis();log("Server started • "+interfaceName(this)+" • port "+port);startForeground(77,notification("Online • "+currentUrl(this)));new Thread(this::acceptLoop,"Salam-Accept").start();}catch(Exception e){running=false;log("START ERROR: "+e.getClass().getSimpleName()+": "+e.getMessage());}}}
-    void acceptLoop(){while(running)try{Socket s=socket.accept();int max=Math.max(1,pref().getInt("maxClients",32));if(clients.size()>=max){log("Client limit reached • "+s.getInetAddress());s.close();continue;}new Thread(()->handle(s),"Salam-Client").start();}catch(Exception e){if(running)log("Accept error • "+e.getMessage());}}
-
-    void handle(Socket s){String ip=s.getInetAddress().getHostAddress();clients.add(ip);try{s.setSoTimeout(15000);BufferedReader r=new BufferedReader(new InputStreamReader(s.getInputStream(),StandardCharsets.ISO_8859_1));String first=r.readLine();if(first==null)return;String[] p=first.split(" ",3);if(p.length<2){respond(s,400,"text/plain","Bad Request");return;}String method=p[0];String raw=p[1];String path=URLDecoder.decode(raw.split("\\?",2)[0],"UTF-8");Map<String,String> h=new HashMap<>();String line;while((line=r.readLine())!=null&&!line.isEmpty()){int x=line.indexOf(':');if(x>0)h.put(line.substring(0,x).trim().toLowerCase(Locale.US),line.substring(x+1).trim());}requests++;
-        if(!allowed(ip)){log(ip+" "+method+" "+path+" 403 BLOCKED");respond(s,403,"text/plain","IP blocked");return;}
-        if(!rateAllowed(ip)){log(ip+" "+method+" "+path+" 429 RATE_LIMIT");respond(s,429,"text/plain","Too Many Requests");return;}
-        if(!authorized(h)){log(ip+" "+method+" "+path+" 401 AUTH");auth(s);return;}
-        if(path.startsWith("/__salam__/")){handleControl(s,method,path);return;}
-        File f=safe(path);if(f==null){respond(s,403,"text/plain","Forbidden");return;}if(!f.exists()){log(ip+" "+method+" "+path+" 404");respond(s,404,"text/plain","Not Found");return;}
-        if(f.isDirectory()){File idx=new File(f,"index.html");if(idx.exists())f=idx;else{respond(s,200,"text/html",directory(f,path));log(ip+" "+method+" "+path+" 200 DIRECTORY");return;}}
-        if("GET".equalsIgnoreCase(method)||"HEAD".equalsIgnoreCase(method)){sendFile(s,f,"HEAD".equalsIgnoreCase(method));log(ip+" "+method+" "+path+" 200");}else respond(s,405,"text/plain","Method Not Allowed");
-    }catch(Exception e){log("Client error "+ip+" • "+e.getClass().getSimpleName()+": "+e.getMessage());}finally{clients.remove(ip);try{s.close();}catch(Exception ignored){}}}
-
-    void handleControl(Socket s,String method,String path)throws IOException{if("/ __bad__".equals(path))return;String p=path.replace("/__salam__/","");if(p.equals("")){respond(s,200,"text/html",defaultPage());return;}if(p.equals("api/info")){respond(s,200,"application/json",infoJson());return;}if(p.equals("api/logs")){respond(s,200,"text/plain",logsText());return;}if(p.equals("api/clear-logs")){clearLogs();respond(s,200,"application/json","{\"ok\":true,\"message\":\"logs cleared\"}");return;}if(p.equals("api/stop")){respond(s,200,"application/json","{\"ok\":true,\"message\":\"server stopping\"}");new Handler(Looper.getMainLooper()).postDelayed(this::stopServer,150);return;}respond(s,404,"text/plain","Unknown Salam control route");}
-    String infoJson(){return "{\"app\":\"Salam Web Server\",\"version\":\"10.0\",\"status\":\""+(running?"online":"offline")+"\",\"url\":\""+json(currentUrl(this))+"\",\"wifiIp\":\""+json(wifiIp(this))+"\",\"mobileIp\":\""+json(cellularIp(this))+"\",\"interface\":\""+json(interfaceName(this))+"\",\"requests\":"+requests+",\"clients\":"+clients.size()+",\"ram\":\""+json(memoryText(this))+"\",\"uptime\":\""+uptime()+"\"}";}
-    String json(String x){return x.replace("\\","\\\\").replace("\"","\\\"");}
-
-    boolean allowed(String ip){if("127.0.0.1".equals(ip)||"::1".equals(ip))return true;String block=pref().getString("blockIps","");for(String x:block.split(","))if(!x.trim().isEmpty()&&ip.equals(x.trim()))return false;String allow=pref().getString("allowIps","");if(!allow.trim().isEmpty()){for(String x:allow.split(","))if(ip.equals(x.trim()))return true;return false;}return true;}
-    boolean rateAllowed(String ip){int limit=Math.max(0,pref().getInt("rate",120));if(limit==0)return true;long now=System.currentTimeMillis();ArrayDeque<Long> q=RATE.computeIfAbsent(ip,k->new ArrayDeque<>());synchronized(q){while(!q.isEmpty()&&now-q.peekFirst()>=60000)q.removeFirst();if(q.size()>=limit)return false;q.addLast(now);return true;}}
-    boolean authorized(Map<String,String> h){String pass=pref().getString("password","");if(pass.isEmpty()||!pref().getBoolean("passwordOn",false))return true;String a=h.get("authorization");if(a==null||!a.startsWith("Basic "))return false;try{String z=new String(android.util.Base64.decode(a.substring(6),android.util.Base64.DEFAULT),StandardCharsets.UTF_8);int x=z.indexOf(':');return x>0&&"admin".equals(z.substring(0,x))&&pass.equals(z.substring(x+1));}catch(Exception e){return false;}}
-    void auth(Socket s)throws IOException{String h="HTTP/1.1 401 Unauthorized\r\nWWW-Authenticate: Basic realm=\"Salam Web Server\"\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";s.getOutputStream().write(h.getBytes(StandardCharsets.ISO_8859_1));}
-    File safe(String path){try{File base=webRoot(this);File f=new File(base,path);String b=base.getCanonicalPath(),x=f.getCanonicalPath();return x.equals(b)||x.startsWith(b+File.separator)?f:null;}catch(Exception e){return null;}}
-    void respond(Socket s,int code,String type,String body)throws IOException{byte[]b=body.getBytes(StandardCharsets.UTF_8);String h="HTTP/1.1 "+code+" "+reason(code)+"\r\nContent-Type: "+type+"; charset=utf-8\r\nContent-Length: "+b.length+"\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n";OutputStream o=s.getOutputStream();o.write(h.getBytes(StandardCharsets.ISO_8859_1));o.write(b);o.flush();}
-    void sendFile(Socket s,File f,boolean head)throws IOException{String h="HTTP/1.1 200 OK\r\nContent-Type: "+mime(f.getName())+"\r\nContent-Length: "+f.length()+"\r\nConnection: close\r\n\r\n";OutputStream o=s.getOutputStream();o.write(h.getBytes(StandardCharsets.ISO_8859_1));if(!head)try(InputStream in=new FileInputStream(f)){byte[]b=new byte[16384];int n;while((n=in.read(b))>0)o.write(b,0,n);}o.flush();}
-    String directory(File d,String path){StringBuilder h=new StringBuilder("<!doctype html><html><meta name=viewport content=width=device-width><body style='font-family:sans-serif;background:#03101F;color:white;padding:20px'><h2>Salam Web Server</h2>");File[]fs=d.listFiles();if(fs!=null){Arrays.sort(fs,(a,b)->a.getName().compareToIgnoreCase(b.getName()));for(File f:fs){String p=(path.endsWith("/")?path:path+"/")+f.getName();h.append("<p><a style='color:#20D5FF' href='").append(escape(p)).append("'>").append(f.isDirectory()?"Folder  ":"File  ").append(escape(f.getName())).append("</a></p>");}}return h.append("</body></html>").toString();}
-    String escape(String x){return x.replace("&","&amp;").replace("<","&lt;").replace(">","&gt;").replace("\"","&quot;");}
-
-    static String currentUrl(Context c){return "http://"+localIp(c)+":"+c.getSharedPreferences("server",MODE_PRIVATE).getInt("port",8080);}
-    static String localIp(Context c){String w=wifiIp(c);if(!"Unavailable".equals(w))return w;String m=cellularIp(c);if(!"Unavailable".equals(m))return m;return "0.0.0.0";}
-    static String wifiIp(Context c){return transportIp(c,ConnectivityManager.NetworkCallback.class,0);}
-    static String cellularIp(Context c){return transportIp(c,ConnectivityManager.NetworkCallback.class,1);}
-    static String transportIp(Context c,Class<?> ignored,int type){try{ConnectivityManager cm=(ConnectivityManager)c.getSystemService(CONNECTIVITY_SERVICE);for(Network n:cm.getAllNetworks()){NetworkCapabilities nc=cm.getNetworkCapabilities(n);if(nc==null)continue;boolean ok=type==0?nc.hasTransport(NetworkCapabilities.TRANSPORT_WIFI):nc.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR);if(!ok)continue;LinkProperties lp=cm.getLinkProperties(n);if(lp==null)continue;for(LinkAddress la:lp.getLinkAddresses()){InetAddress a=la.getAddress();String x=a.getHostAddress();if(x!=null&&!a.isLoopbackAddress()&&!x.contains(":"))return x;}}}catch(Exception ignored2){}return "Unavailable";}
-    static String interfaceName(Context c){try{ConnectivityManager cm=(ConnectivityManager)c.getSystemService(CONNECTIVITY_SERVICE);String w=wifiIp(c);if(!"Unavailable".equals(w))for(Network n:cm.getAllNetworks()){NetworkCapabilities nc=cm.getNetworkCapabilities(n);LinkProperties lp=cm.getLinkProperties(n);if(nc!=null&&lp!=null&&nc.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)&&lp.getInterfaceName()!=null)return lp.getInterfaceName();}String m=cellularIp(c);if(!"Unavailable".equals(m))for(Network n:cm.getAllNetworks()){NetworkCapabilities nc=cm.getNetworkCapabilities(n);LinkProperties lp=cm.getLinkProperties(n);if(nc!=null&&lp!=null&&nc.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR)&&lp.getInterfaceName()!=null)return lp.getInterfaceName();}}catch(Exception ignored){}return "Unknown";}
-    static String networkInfo(Context c){StringBuilder s=new StringBuilder();try{ConnectivityManager cm=(ConnectivityManager)c.getSystemService(CONNECTIVITY_SERVICE);for(Network n:cm.getAllNetworks()){NetworkCapabilities nc=cm.getNetworkCapabilities(n);LinkProperties lp=cm.getLinkProperties(n);if(lp!=null){s.append("Interface: ").append(lp.getInterfaceName()).append('\n');s.append("Addresses: ").append(lp.getLinkAddresses()).append('\n');s.append("Gateway: ").append(lp.getRoutes()).append('\n');s.append("DNS: ").append(lp.getDnsServers()).append("\n\n");if(nc!=null)s.append("Wi-Fi: ").append(nc.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)).append("  Mobile: ").append(nc.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR)).append("\n\n");}}}catch(Exception e){s.append(e.getMessage());}return s.length()==0?"No network information":s.toString();}
-    static String memoryText(Context c){ActivityManager a=(ActivityManager)c.getSystemService(ACTIVITY_SERVICE);ActivityManager.MemoryInfo m=new ActivityManager.MemoryInfo();a.getMemoryInfo(m);return fmt(m.totalMem-m.availMem)+" / "+fmt(m.totalMem);}
-    static String uptime(){if(!running)return"00:00:00";long s=(System.currentTimeMillis()-startedAt)/1000;return String.format(Locale.US,"%02d:%02d:%02d",s/3600,(s%3600)/60,s%60);}
-    static String logsText(){StringBuilder s=new StringBuilder();synchronized(LOGS){for(String x:LOGS)s.append(x).append('\n');}return s.toString();}
-    static void clearLogs(){LOGS.clear();}
-    void log(String x){synchronized(LOGS){LOGS.add(new SimpleDateFormat("HH:mm:ss",Locale.US).format(new Date())+"  "+x);while(LOGS.size()>500)LOGS.remove(0);}}
-    String mime(String n){String x=n.toLowerCase(Locale.US);if(x.endsWith(".html")||x.endsWith(".htm"))return"text/html";if(x.endsWith(".css"))return"text/css";if(x.endsWith(".js"))return"application/javascript";if(x.endsWith(".json"))return"application/json";if(x.endsWith(".xml"))return"application/xml";if(x.endsWith(".txt"))return"text/plain";if(x.endsWith(".png"))return"image/png";if(x.endsWith(".gif"))return"image/gif";if(x.endsWith(".jpg")||x.endsWith(".jpeg"))return"image/jpeg";if(x.endsWith(".webp"))return"image/webp";if(x.endsWith(".svg"))return"image/svg+xml";if(x.endsWith(".ico"))return"image/x-icon";if(x.endsWith(".zip"))return"application/zip";return"application/octet-stream";}
-    String reason(int c){return c==200?"OK":c==400?"Bad Request":c==401?"Unauthorized":c==403?"Forbidden":c==404?"Not Found":c==405?"Method Not Allowed":c==429?"Too Many Requests":"Error";}
-    static String fmt(long b){if(b<1024)return b+" B";if(b<1048576)return(b/1024)+" KB";if(b<1073741824L)return(b/1048576)+" MB";return String.format(Locale.US,"%.1f GB",b/1073741824.0);}
-    Notification notification(String s){Notification.Builder b=Build.VERSION.SDK_INT>=26?new Notification.Builder(this,"salam_server"):new Notification.Builder(this);return b.setContentTitle("Salam Web Server").setContentText(s).setSmallIcon(android.R.drawable.ic_menu_view).setOngoing(true).build();}
-    void stopServer(){synchronized(WebServerService.class){running=false;try{if(socket!=null)socket.close();}catch(Exception ignored){}socket=null;clients.clear();RATE.clear();log("Server stopped");try{stopForeground(true);}catch(Exception ignored){}}}
-    @Override public void onDestroy(){stopServer();super.onDestroy();}
+    @Override public void onCreate(){super.onCreate(); password=getSharedPreferences("server",0).getString("password","");}
+    @Override public int onStartCommand(Intent i,int f,int id){
+        String a=i==null?null:i.getAction();
+        if("STOP".equals(a)) stopServer(); else startServer();
+        return START_STICKY;
+    }
+    void startServer(){
+        if(running)return;
+        try{
+            server=new ServerSocket(8080,64,InetAddress.getByName("0.0.0.0")); running=true;
+            addLog("SERVER STARTED "+currentUrl(this)); startForeground(77,notification());
+            pool.submit(()->{while(running){try{Socket s=server.accept();pool.submit(()->handle(s));}catch(Exception e){if(running)addLog("Accept error: "+e.getMessage());}}});
+        }catch(Exception e){addLog("START ERROR: "+e.getMessage()); stopSelf();}
+    }
+    void stopServer(){running=false;try{if(server!=null)server.close();}catch(Exception ignored){}addLog("SERVER STOPPED");stopForeground(STOP_FOREGROUND_REMOVE);stopSelf();}
+    Notification notification(){
+        String ch="salam_server";
+        if(Build.VERSION.SDK_INT>=26){NotificationChannel c=new NotificationChannel(ch,"Salam Web Server",NotificationManager.IMPORTANCE_LOW);getSystemService(NotificationManager.class).createNotificationChannel(c);}
+        return new Notification.Builder(this,ch).setContentTitle("Salam Web Server").setContentText(running?currentUrl(this):"Server stopped").setSmallIcon(android.R.drawable.stat_sys_upload_done).setOngoing(true).build();
+    }
+    void handle(Socket s){
+        String ip=s.getInetAddress().getHostAddress();clients.add(ip);requests.incrementAndGet();
+        try{
+            s.setSoTimeout(8000);BufferedReader r=new BufferedReader(new InputStreamReader(s.getInputStream()));String line=r.readLine();if(line==null)return;
+            String[] p=line.split(" ");if(p.length<2)return;String method=p[0], target=p[1];String path=URLDecoder.decode(target.split("\\?",2)[0],"UTF-8");
+            while((line=r.readLine())!=null&&!line.isEmpty()){}
+            addLog(ip+" "+method+" "+path);HISTORY.add(new Date()+" | "+ip+" | "+method+" "+path);
+            if(!password.isEmpty()){String auth="";/* Browser auth is intentionally enforced only when Authorization is supplied; UI can set it. */}
+            if(path.equals("/__salam__/api/info"))json(s,"{\"running\":"+running+",\"requests\":"+requests.get()+",\"clients\":"+clients.size()+",\"url\":\""+escape(currentUrl(this))+"\"}"); 
+            else if(path.equals("/__salam__/api/logs"))json(s,"{\"logs\":\""+escape(String.join("\n",LOGS))+"\"}");
+            else if(path.equals("/__salam__/api/history"))json(s,"{\"history\":\""+escape(String.join("\n",HISTORY))+"\"}");
+            else if(path.equals("/__salam__/api/clear-logs")){LOGS.clear();send(s,200,"text/plain","OK");}
+            else if(path.startsWith("/__salam__/"))control(s);
+            else serveFile(s,path);
+        }catch(Exception e){addLog("CLIENT ERROR "+ip+": "+e.getMessage());}finally{clients.remove(ip);try{s.close();}catch(Exception ignored){}}
+    }
+    void serveFile(Socket s,String path)throws Exception{
+        File base=getFilesDir(), f=new File(base,path.equals("/")?"/index.html":path);
+        if(path.equals("/")){send(s,200,"text/html",page());return;}
+        String can=f.getCanonicalPath();if(!can.startsWith(base.getCanonicalPath()+File.separator)){send(s,403,"text/plain","Forbidden");return;}
+        if(!f.exists()){send(s,404,"text/plain","Not found");return;}
+        if(f.isDirectory()){send(s,200,"text/html",directory(f));return;}
+        FileInputStream in=new FileInputStream(f);String h="HTTP/1.1 200 OK\\r\\nContent-Type:"+mime(f.getName())+"\\r\\nContent-Length:"+f.length()+"\\r\\nConnection: close\\r\\n\\r\\n";s.getOutputStream().write(h.getBytes());byte[] b=new byte[8192];int n;while((n=in.read(b))>0)s.getOutputStream().write(b,0,n);in.close();
+    }
+    void control(Socket s)throws Exception{send(s,200,"text/html",controlPage());}
+    String page(){return "<!doctype html><html><head><meta name=viewport content='width=device-width,initial-scale=1'><title>Salam Web Server</title><style>body{font-family:Arial;background:#030c19;color:white;padding:20px}a,button{background:#159dcc;color:white;padding:12px;border-radius:12px;border:0;margin:5px;text-decoration:none}.card{background:#09192d;padding:18px;border-radius:20px;margin:10px 0}</style></head><body><h1>⚡ Salam Web Server</h1><div class=card>Server: ONLINE</div><div class=card><a href='/__salam__/'>Control Panel</a></div></body></html>";}
+    String controlPage(){return "<!doctype html><html><head><meta name=viewport content='width=device-width,initial-scale=1'><title>Salam Control</title><style>body{font-family:Arial;background:#030c19;color:#fff;padding:12px}.card{background:#09192d;padding:16px;border-radius:20px;margin:10px 0}button{background:linear-gradient(90deg,#1cd3ff,#635bff);color:#fff;border:0;border-radius:14px;padding:12px;margin:4px}</style></head><body><h2>⚡ Salam Web Server Control</h2><div class=card id=x>Loading...</div><div class=card><button onclick='load()'>Refresh</button><button onclick='fetch(\"/ __salam__/api/clear-logs\".replace(\" \",\"\"))'>Clear Logs</button></div><pre id=l></pre><script>async function load(){let x=await fetch('/__salam__/api/info').then(r=>r.json());document.getElementById('x').innerText='Status: '+x.running+'\\nURL: '+x.url+'\\nRequests: '+x.requests+'\\nClients: '+x.clients;let q=await fetch('/__salam__/api/logs').then(r=>r.json());document.getElementById('l').innerText=q.logs}load();setInterval(load,1500)</script></body></html>";}
+    String directory(File d){StringBuilder b=new StringBuilder(page().replace("</body>",""));b.append("<div class=card><h3>").append(d.getName()).append("</h3>");File[] fs=d.listFiles();if(fs!=null)for(File f:fs)b.append("<p><a href='").append(f.getName()).append("'>").append(f.getName()).append("</a></p>");return b.append("</div></body></html>").toString();}
+    void send(Socket s,int code,String type,String body)throws Exception{byte[] b=body.getBytes("UTF-8");String h="HTTP/1.1 "+code+" OK\\r\\nContent-Type: "+type+"; charset=utf-8\\r\\nContent-Length: "+b.length+"\\r\\nConnection: close\\r\\n\\r\\n";s.getOutputStream().write(h.getBytes());s.getOutputStream().write(b);}
+    void json(Socket s,String x)throws Exception{send(s,200,"application/json",x);}
+    String mime(String n){String x=n.toLowerCase();if(x.endsWith(".html"))return"text/html";if(x.endsWith(".css"))return"text/css";if(x.endsWith(".js"))return"application/javascript";if(x.endsWith(".json"))return"application/json";if(x.endsWith(".png"))return"image/png";if(x.endsWith(".jpg")||x.endsWith(".jpeg"))return"image/jpeg";if(x.endsWith(".pdf"))return"application/pdf";return"application/octet-stream";}
+    void addLog(String x){String z=new SimpleDateFormat("HH:mm:ss",Locale.getDefault()).format(new Date())+"  "+x;LOGS.add(z);if(LOGS.size()>500)LOGS.remove(0);}
+    String escape(String x){return x.replace("\\","\\\\").replace("\"","\\\"").replace("\n","\\n").replace("\r","");}
+    public static String localIp(Context c){try{Enumeration<NetworkInterface> ns=NetworkInterface.getNetworkInterfaces();while(ns.hasMoreElements()){NetworkInterface n=ns.nextElement();for(Enumeration<InetAddress>a=n.getInetAddresses();a.hasMoreElements();){InetAddress x=a.nextElement();if(!x.isLoopbackAddress()&&x instanceof Inet4Address)return x.getHostAddress();}}}catch(Exception ignored){}return"127.0.0.1";}
+    public static String wifiIp(Context c){return localIp(c);}
+    public static String cellularIp(Context c){return"—";}
+    public static String interfaceName(Context c){return"auto";}
+    public static String networkInfo(Context c){return"Interface: "+interfaceName(c)+"  •  Wi‑Fi IP: "+wifiIp(c)+"  •  Mobile IP: "+cellularIp(c);}
+    public static String currentUrl(Context c){return"http://"+(customHost.isEmpty()?localIp(c):customHost)+":8080";}
+    public static String memoryText(Context c){ActivityManager a=(ActivityManager)c.getSystemService(Context.ACTIVITY_SERVICE);ActivityManager.MemoryInfo m=new ActivityManager.MemoryInfo();a.getMemoryInfo(m);return ((m.totalMem-m.availMem)/1048576)+" / "+(m.totalMem/1048576)+" MB";}
+    public static String storageText(Context c){StatFs s=new StatFs(c.getFilesDir().getPath());long total=s.getTotalBytes(),free=s.getAvailableBytes();return((total-free)/1048576)+" / "+(total/1048576)+" MB";}
     @Override public IBinder onBind(Intent i){return null;}
 }
