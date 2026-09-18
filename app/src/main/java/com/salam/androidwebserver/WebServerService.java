@@ -1137,6 +1137,12 @@ public class WebServerService extends Service {
         }
     }
 
+    public static void setCustomHost(Context context, String host) {
+        customHost = cleanHost(host);
+        context.getSharedPreferences(PREFS, MODE_PRIVATE)
+                .edit().putString("host", customHost).apply();
+    }
+
     public static void unblockIp(String ip) {
         if (ip == null) return;
 
@@ -1144,6 +1150,13 @@ public class WebServerService extends Service {
 
         // The Android Activity does not pass Context here, so persistence is
         // refreshed on the next save/load. Runtime state is immediately fixed.
+    }
+
+    public static void unblockIp(Context context, String ip) {
+        if (ip == null) return;
+        BLOCK.remove(ip.trim());
+        context.getSharedPreferences(PREFS, MODE_PRIVATE)
+                .edit().putString("block", joinSet(BLOCK)).apply();
     }
 
     private static void loadSettings(Context context) {
