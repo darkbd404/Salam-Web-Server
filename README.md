@@ -1,22 +1,19 @@
-# Salam SIP Server v10
+# Salam Web Server v10.0 — UI Final Update
 
-Android local HTTP web server with native dashboard and browser control center.
+This update keeps the existing server/file/security system and focuses on the requested final UI/runtime fixes:
 
-## Included
-- Multi-theme premium UI + animations
-- Real server start/stop + foreground notification
-- CPU/RAM/storage/network metrics
-- Live clients, request log and access history
-- Basic web login/password
-- IP allowlist/blocklist/unblock, CIDR matching
-- Per-IP request rate limiting and client limit
-- File manager: upload/download/create/rename/delete/copy/move
-- Text editor for website files
-- ZIP extraction with path traversal protection
-- QR sharing, URL copy, configurable custom display URL
-- Browser-side admin panel with 2-second auto refresh
-- Developer contact and Messenger link
+- Premium centered Start/Stop server control so the button no longer clips or pushes outside the card.
+- 7 server LEDs: sequential startup, then independent continuous pulse/glow; red low-glow when OFF.
+- Real-time telemetry cards: CPU, RAM, storage, battery/charging, clients, total requests, requests/min, traffic, uptime and active network interface.
+- Live Wi-Fi/mobile/network information and automatic active-interface detection.
+- Colorful server-rack app/server icon plus vector icons in the home tiles and bottom navigation.
+- Prominent Copy URL action in the server panel.
+- cPanel-style file manager layout with root/storage summary, search, file/folder metadata, upload and ZIP tools.
+- Foreground-service notification with server status, Open App and Stop Server action.
+- Partial wake lock while the server is running to reduce sleep-related interruptions.
+- Existing browser control panel, logs/history, security, ZIP and server functions are retained.
 
-Custom URL is only a display/alias field; a real public hostname requires DNS/tunnel infrastructure.
+## Build
+Use the included GitHub Actions workflow (`Build Salam Web Server v10`) with **Run workflow**.
 
-The project targets Android 14 (API 34) while compiling against API 35. Android foreground-service rules require the service type and permission.
+Android background execution is still subject to Android/OEM battery-management policies; foreground service + wake lock improves persistence but cannot guarantee an absolute 24/7 runtime on every device.
