@@ -356,5 +356,11 @@ public final class PublicAccessManager {
         toast(c, "Public URL copied");
     }
 
+    private static String safe(String s) {
+        if (s == null || s.trim().isEmpty()) return "Unknown error";
+        String x = s.trim();
+        return x.length() > 500 ? x.substring(0, 500) : x;
+    }
+
     private static void toast(Context c, String s) { MAIN.post(() -> Toast.makeText(c, s, Toast.LENGTH_SHORT).show()); }
 }

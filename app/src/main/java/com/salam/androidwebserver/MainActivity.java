@@ -134,7 +134,7 @@ public class MainActivity extends Activity {
                 homeStatus.setText(r?"Server Running":"Server Stopped");homeStatus.setTextColor(r?GREEN:Color.RED);
                 homeUrl.setText(WebServerService.currentUrl(MainActivity.this));
                 homeStats.setText((r?"●  Online":"●  Offline")+"      Requests: "+WebServerService.requests+"      Clients: "+WebServerService.clients.size()+
-                        "\nUptime: "+WebServerService.uptime()+"      RAM: "+WebServerService.memoryText(MainActivity.this));
+                        "\nUptime: "+uptimeText()+"      RAM: "+WebServerService.memoryText(MainActivity.this));
             }
             handler.postDelayed(this,1000);
         }},1000);
@@ -180,7 +180,26 @@ public class MainActivity extends Activity {
     void newFile(){EditText e=input("index.html");new AlertDialog.Builder(this).setTitle("📄 Create File").setView(e).setNegativeButton("Cancel",null).setPositiveButton("Create",(d,w)->{try{File f=new File(WebServerService.webRoot(this),folder+"/"+e.getText().toString().trim());f.getParentFile().mkdirs();f.createNewFile();show(1);}catch(Exception ignored){}}).show();}
     EditText input(String s){EditText e=new EditText(this);e.setText(s);e.setTextColor(WHITE);e.setHintTextColor(Color.GRAY);e.setSingleLine(true);return e;}
 
-    void logs(){LinearLayout c=card();LinearLayout r=new LinearLayout(this);Button clear=blueButton("🗑 Clear Log");Button refresh=blueButton("↻ Refresh");clear.setOnClickListener(v->{WebServerService.clearLogs();logs();});refresh.setOnClickListener(v->logs());r.addView(clear,new LinearLayout.LayoutParams(0,dp(44),1));r.addView(refresh,new LinearLayout.LayoutParams(0,dp(44),1));c.addView(r);TextView l=text(WebServerService.logsText(),11,WHITE);l.setGravity(Gravity.TOP);l.setPadding(dp(4),dp(10),dp(4),dp(10));c.addView(l,new LinearLayout.LayoutParams(-1,dp(560)));content.addView(c);}
+    String joinLogs(){
+        StringBuilder b=new StringBuilder();
+        b.append("LIVE REQUEST LOG\n\n");
+        for(String x:WebServerService.LOGS)b.append(x).append('\n');
+        b.append("\nACCESS HISTORY\n\n");
+        for(String x:WebServerService.HISTORY)b.append(x).append('\n');
+        return b.length()==0?"No logs yet":b.toString();
+    }
+    String uptimeText(){
+        if(!WebServerService.running)return "00:00:00";
+        try{
+            java.lang.reflect.Field f=WebServerService.class.getDeclaredField("startedAt");
+            f.setAccessible(true);
+            long start=f.getLong(null);
+            long sec=Math.max(0,(System.currentTimeMillis()-start)/1000);
+            return String.format(Locale.US,"%02d:%02d:%02d",sec/3600,(sec%3600)/60,sec%60);
+        }catch(Exception e){return "--:--:--";}
+    }
+
+    void logs(){LinearLayout c=card();LinearLayout r=new LinearLayout(this);Button clear=blueButton("🗑 Clear Log");Button refresh=blueButton("↻ Refresh");clear.setOnClickListener(v->{WebServerService.LOGS.clear();WebServerService.HISTORY.clear();logs();});refresh.setOnClickListener(v->logs());r.addView(clear,new LinearLayout.LayoutParams(0,dp(44),1));r.addView(refresh,new LinearLayout.LayoutParams(0,dp(44),1));c.addView(r);TextView l=text(joinLogs(),11,WHITE);l.setGravity(Gravity.TOP);l.setPadding(dp(4),dp(10),dp(4),dp(10));c.addView(l,new LinearLayout.LayoutParams(-1,dp(560)));content.addView(c);}
     void settings(){section("SERVER CONFIGURATION");
         PublicAccessManager.addSettingsItem(this, content);setting("▣","Port","8080 • Change listening port",()->portDialog());setting("📁","Document Root","App-local web root • /files/www",()->Toast.makeText(this,"Web root: "+WebServerService.webRoot(this),Toast.LENGTH_LONG).show());setting("🚀","Auto Start",pref.getBoolean("autostart",false)?"Enabled":"Disabled",()->{boolean x=!pref.getBoolean("autostart",false);pref.edit().putBoolean("autostart",x).apply();settings();});section("SECURITY");setting("🔐","Password Protection",pref.getString("password","").isEmpty()?"Off":"On",()->security());setting("🟢","IP Allowlist",pref.getString("allowIps","").isEmpty()?"Empty":"Configured",()->security());setting("🔴","IP Blocklist",pref.getString("blockIps","").isEmpty()?"Empty":"Configured",()->security());setting("🚦","Request Rate Limit",""+pref.getInt("rate",120)+" requests/min/IP",()->security());section("NETWORK & APPEARANCE");setting("🌐","Network Info","LAN address & interfaces",()->network());setting("🔳","QR Server Sharing","Share server URL",()->qr());setting("🎨","Theme","Midnight • Ocean • Violet • Emerald • Sunset",()->theme());section("ABOUT");setting("👨‍💻","Developer","Abdus Salam • 09696590864",()->about());setting("💬","Messenger","m.me/Salam.864",()->messenger());}
     void setting(String i,String n,String d,Runnable r){tile(i,n,d,r);}
