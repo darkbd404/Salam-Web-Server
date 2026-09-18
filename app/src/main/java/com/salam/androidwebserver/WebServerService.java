@@ -34,6 +34,25 @@ public class WebServerService extends Service {
 
     @Override public void onCreate(){super.onCreate();load();createChannel();}
     @Override public int onStartCommand(Intent i,int flags,int id){load();if(i!=null&&"STOP".equals(i.getAction())){stopServer();stopSelf();return START_NOT_STICKY;}if(i!=null&&"RESTART".equals(i.getAction())){stopServer();}startServer();return START_STICKY;}
+    private void stopServer(){
+        synchronized(LOCK){
+            if(!running){
+                try{stopForeground(STOP_FOREGROUND_REMOVE);}catch(Exception ignored){}
+                return;
+            }
+            running=false;
+            try{if(server!=null)server.close();}catch(Exception ignored){}
+            server=null;
+            clients.clear();
+            RATE.clear();
+            log("SERVER STOPPED");
+            try{
+                if(Build.VERSION.SDK_INT>=24) stopForeground(STOP_FOREGROUND_REMOVE);
+                else stopForeground(true);
+            }catch(Exception ignored){}
+        }
+    }
+
     @Override public IBinder onBind(Intent i){return null;}
     @Override public void onDestroy(){stopServer();super.onDestroy();}
 
@@ -121,8 +140,32 @@ public class WebServerService extends Service {
     public static void writeText(File f,String s)throws IOException{try(FileOutputStream o=new FileOutputStream(f)){o.write(s.getBytes(StandardCharsets.UTF_8));}}
     public static void copyRecursive(File a,File b)throws IOException{if(a.isDirectory()){b.mkdirs();File[]x=a.listFiles();if(x!=null)for(File q:x)copyRecursive(q,new File(b,q.getName()));}else{File p=b.getParentFile();if(p!=null)p.mkdirs();try(InputStream i=new FileInputStream(a);OutputStream o=new FileOutputStream(b)){byte[]z=new byte[16384];int n;while((n=i.read(z))>0)o.write(z,0,n);}}}
     public static void deleteRecursive(File f){if(f.isDirectory()){File[]x=f.listFiles();if(x!=null)for(File q:x)deleteRecursive(q);}f.delete();}
-    public static void zip(File src,File out)throws IOException{new WebServerService().zipStandalone(src,out);}
-    private void zipStandalone(File src,File out)throws IOException{try(ZipOutputStream z=new ZipOutputStream(new FileOutputStream(out))){File base=src.isDirectory()?src.getParentFile():src.getParentFile();zipRec(src,base,z);}}
+    public static void zip(File src,File out)throws IOException{
+        if(src==null||out==null) throw new IOException("Invalid ZIP source");
+        File parent=out.getParentFile();
+        if(parent!=null) parent.mkdirs();
+        try(ZipOutputStream z=new ZipOutputStream(new FileOutputStream(out))){
+            File base=src.getParentFile();
+            if(base==null) base=src;
+            zipRecStatic(src,base,z);
+        }
+    }
+    private static void zipRecStatic(File f,File base,ZipOutputStream z)throws IOException{
+        String name=base.toPath().relativize(f.toPath()).toString().replace('\\','/');
+        if(f.isDirectory()){
+            if(!name.endsWith("/")) name+="/";
+            if(!name.equals("/")){z.putNextEntry(new ZipEntry(name));z.closeEntry();}
+            File[] a=f.listFiles();
+            if(a!=null) for(File x:a) zipRecStatic(x,base,z);
+        }else{
+            z.putNextEntry(new ZipEntry(name));
+            try(InputStream i=new FileInputStream(f)){
+                byte[] b=new byte[16384]; int n;
+                while((n=i.read(b))>0) z.write(b,0,n);
+            }
+            z.closeEntry();
+        }
+    }
     public static void unzip(File z,File dest)throws IOException{if(dest==null)throw new IOException("Invalid destination");String base=dest.getCanonicalPath();try(ZipInputStream in=new ZipInputStream(new FileInputStream(z))){ZipEntry e;while((e=in.getNextEntry())!=null){File o=new File(dest,e.getName());String cp=o.getCanonicalPath();if(!cp.equals(base)&&!cp.startsWith(base+File.separator))throw new IOException("Unsafe ZIP entry");if(e.isDirectory())o.mkdirs();else{File p=o.getParentFile();if(p!=null)p.mkdirs();try(OutputStream out=new FileOutputStream(o)){byte[]b=new byte[16384];int n;while((n=in.read(b))>0)out.write(b,0,n);}}}}}
     private static byte[] readAll(File f)throws IOException{try(InputStream i=new FileInputStream(f);ByteArrayOutputStream o=new ByteArrayOutputStream()){byte[]b=new byte[16384];int n;while((n=i.read(b))>0)o.write(b,0,n);return o.toByteArray();}}
     private String json(String s){return(s==null?"":s).replace("\\","\\\\").replace("\"","\\\"").replace("\r","").replace("\n","\\n");}
