@@ -103,6 +103,17 @@ public class WebServerService extends Service {
     public static String wifiIp(Context c){return interfaceIp(c,"wlan");}
     public static String cellularIp(Context c){String x=interfaceIp(c,"rmnet");return "—".equals(x)?interfaceIp(c,"ccmni"):x;}
     private static String interfaceIp(Context c,String prefix){try{ConnectivityManager m=(ConnectivityManager)c.getSystemService(Context.CONNECTIVITY_SERVICE);for(Network n:m.getAllNetworks()){LinkProperties lp=m.getLinkProperties(n);if(lp!=null&&lp.getInterfaceName()!=null&&lp.getInterfaceName().startsWith(prefix))for(LinkAddress a:lp.getLinkAddresses()){String x=a.getAddress().getHostAddress();if(x!=null&&!x.contains(":" )&&!x.startsWith("127."))return x;}}}catch(Exception ignored){}return "—";}
+    public static String interfaceName(Context c){
+        try{
+            ConnectivityManager m=(ConnectivityManager)c.getSystemService(Context.CONNECTIVITY_SERVICE);
+            Network n=m.getActiveNetwork();
+            if(n!=null){
+                LinkProperties lp=m.getLinkProperties(n);
+                if(lp!=null && lp.getInterfaceName()!=null) return lp.getInterfaceName();
+            }
+        }catch(Exception ignored){}
+        return "—";
+    }
     public static String networkSummary(Context c){try{ConnectivityManager m=(ConnectivityManager)c.getSystemService(Context.CONNECTIVITY_SERVICE);Network n=m.getActiveNetwork();LinkProperties lp=n==null?null:m.getLinkProperties(n);return "Interface: "+(lp==null?"—":String.valueOf(lp.getInterfaceName()))+" • Wi-Fi IP: "+wifiIp(c)+" • Mobile IP: "+cellularIp(c);}catch(Exception e){return "Network unavailable";}}
     public static String networkInfo(Context c){return networkSummary(c)+"\nGateway: "+gateway(c)+"\nDNS: "+dns(c);}
     public static String gateway(Context c){try{ConnectivityManager m=(ConnectivityManager)c.getSystemService(Context.CONNECTIVITY_SERVICE);Network n=m.getActiveNetwork();LinkProperties lp=n==null?null:m.getLinkProperties(n);if(lp!=null&&!lp.getRoutes().isEmpty())for(RouteInfo r:lp.getRoutes())if(r.isDefaultRoute()&&r.getGateway()!=null)return r.getGateway().getHostAddress();}catch(Exception ignored){}return "—";}
