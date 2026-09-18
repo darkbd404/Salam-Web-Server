@@ -1,1 +1,10 @@
-<resources><color name="bg">#090C14</color><color name="surface">#151A27</color><color name="accent">#19E6A5</color></resources>
+<resources>
+    <color name="salam_bg">#020A15</color>
+    <color name="salam_card">#06172A</color>
+    <color name="salam_cyan">#18DAFF</color>
+    <color name="salam_green">#27F497</color>
+    <color name="salam_red">#FF3D58</color>
+    <color name="salam_purple">#BC4EFF</color>
+    <color name="salam_yellow">#FFCF2E</color>
+    <color name="salam_orange">#FF8B26</color>
+</resources>

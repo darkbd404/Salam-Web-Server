@@ -1,8 +1,13 @@
 <resources>
-<style name="Theme.SalamSIPServer" parent="android:style/Theme.Material.NoActionBar">
-<item name="android:fontFamily">sans</item><item name="android:windowActionModeOverlay">true</item>
-<item name="android:colorAccent">#1CDFFF</item><item name="android:windowBackground">#020912</item>
-<item name="android:statusBarColor">#020912</item><item name="android:navigationBarColor">#020912</item>
-<item name="android:windowLightStatusBar">false</item><item name="android:windowLightNavigationBar">false</item>
-</style>
+    <style name="Theme.SalamSIPServer" parent="android:style/Theme.Material.NoActionBar">
+        <item name="android:fontFamily">sans</item>
+        <item name="android:windowActionModeOverlay">true</item>
+        <item name="android:colorAccent">#18DAFF</item>
+        <item name="android:windowBackground">#020A15</item>
+        <item name="android:statusBarColor">#020A15</item>
+        <item name="android:navigationBarColor">#020A15</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowLightNavigationBar">false</item>
+        <item name="android:windowNoTitle">true</item>
+    </style>
 </resources>
