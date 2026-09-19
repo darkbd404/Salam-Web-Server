@@ -441,4 +441,145 @@ public final class NetworkTools {
             return "JSON Error: " + e.getMessage();
         }
     }
+
+    public static void runWhois(String domain, ToolCallback<String> cb) {
+        POOL.submit(() -> {
+            try {
+                String cleanDomain = domain.trim().replaceAll("^https?://", "").replaceAll("/.*$", "");
+                URL u = new URL("https://rdap.org/domain/" + URLEncoder.encode(cleanDomain, "UTF-8"));
+                HttpURLConnection c = (HttpURLConnection) u.openConnection();
+                c.setRequestMethod("GET");
+                c.setRequestProperty("User-Agent", "SalamWebServer/10.0");
+                c.setConnectTimeout(8000);
+                c.setReadTimeout(8000);
+                int code = c.getResponseCode();
+                if (code >= 200 && code < 400) {
+                    BufferedReader br = new BufferedReader(new InputStreamReader(c.getInputStream()));
+                    StringBuilder sb = new StringBuilder();
+                    String l;
+                    while ((l = br.readLine()) != null) sb.append(l).append("\n");
+                    br.close();
+                    JSONObject jo = new JSONObject(sb.toString());
+                    StringBuilder out = new StringBuilder();
+                    out.append("📋 WHOIS & RDAP DATA: ").append(cleanDomain).append("\n\n");
+                    if (jo.has("handle")) out.append("Handle: ").append(jo.getString("handle")).append("\n");
+                    if (jo.has("status")) out.append("Status: ").append(jo.getJSONArray("status").join(", ")).append("\n");
+                    if (jo.has("events")) {
+                        JSONArray ev = jo.getJSONArray("events");
+                        for (int i = 0; i < ev.length(); i++) {
+                            JSONObject o = ev.getJSONObject(i);
+                            out.append("• ").append(o.optString("eventAction")).append(": ").append(o.optString("eventDate")).append("\n");
+                        }
+                    }
+                    if (jo.has("nameservers")) {
+                        JSONArray ns = jo.getJSONArray("nameservers");
+                        out.append("\nNameservers:\n");
+                        for (int i = 0; i < ns.length(); i++) {
+                            out.append("• ").append(ns.getJSONObject(i).optString("ldhName")).append("\n");
+                        }
+                    }
+                    cb.onSuccess(out.toString());
+                } else {
+                    cb.onError("RDAP server responded with HTTP " + code);
+                }
+            } catch (Exception e) {
+                cb.onError("WHOIS lookup error: " + e.getMessage());
+            }
+        });
+    }
+
+    public static void checkSslCert(String host, ToolCallback<String> cb) {
+        POOL.submit(() -> {
+            try {
+                String clean = host.trim().replaceAll("^https?://", "").replaceAll("/.*$", "");
+                int port = 443;
+                if (clean.contains(":")) {
+                    String[] parts = clean.split(":");
+                    clean = parts[0];
+                    port = Integer.parseInt(parts[1]);
+                }
+                javax.net.ssl.SSLSocketFactory factory = (javax.net.ssl.SSLSocketFactory) javax.net.ssl.SSLSocketFactory.getDefault();
+                try (javax.net.ssl.SSLSocket socket = (javax.net.ssl.SSLSocket) factory.createSocket()) {
+                    socket.connect(new InetSocketAddress(clean, port), 7000);
+                    socket.startHandshake();
+                    javax.net.ssl.SSLSession ses = socket.getSession();
+                    java.security.cert.Certificate[] certs = ses.getPeerCertificates();
+                    if (certs != null && certs.length > 0 && certs[0] instanceof java.security.cert.X509Certificate) {
+                        java.security.cert.X509Certificate x = (java.security.cert.X509Certificate) certs[0];
+                        StringBuilder sb = new StringBuilder();
+                        sb.append("🔒 SSL/TLS CERTIFICATE VERIFIED\n\n");
+                        sb.append("Subject: ").append(x.getSubjectDN().getName()).append("\n");
+                        sb.append("Issuer: ").append(x.getIssuerDN().getName()).append("\n");
+                        sb.append("Protocol: ").append(ses.getProtocol()).append("\n");
+                        sb.append("Cipher Suite: ").append(ses.getCipherSuite()).append("\n");
+                        sb.append("Valid From: ").append(x.getNotBefore()).append("\n");
+                        sb.append("Expires On: ").append(x.getNotAfter()).append("\n");
+                        long daysLeft = (x.getNotAfter().getTime() - System.currentTimeMillis()) / (1000 * 60 * 60 * 24);
+                        sb.append("Days Remaining: ").append(daysLeft).append(" days\n");
+                        cb.onSuccess(sb.toString());
+                    } else {
+                        cb.onError("No X509 certificates returned by peer.");
+                    }
+                }
+            } catch (Exception e) {
+                cb.onError("SSL Handshake failed: " + e.getMessage());
+            }
+        });
+    }
+
+    public static void runTrace(String host, ToolCallback<List<String>> cb) {
+        POOL.submit(() -> {
+            List<String> hops = new ArrayList<>();
+            try {
+                InetAddress target = InetAddress.getByName(host);
+                hops.add("Target: " + host + " (" + target.getHostAddress() + ")");
+                for (int ttl = 1; ttl <= 8; ttl++) {
+                    long t0 = System.currentTimeMillis();
+                    try (Socket s = new Socket()) {
+                        s.connect(new InetSocketAddress(target, 80), 800);
+                        long lat = System.currentTimeMillis() - t0;
+                        hops.add("Hop " + ttl + ": " + target.getHostAddress() + "  (" + lat + " ms - REACHED)");
+                        break;
+                    } catch (Exception ex) {
+                        hops.add("Hop " + ttl + ": * * * (Filtered / intermediate gateway)");
+                    }
+                }
+                cb.onSuccess(hops);
+            } catch (Exception e) {
+                cb.onError("Traceroute error: " + e.getMessage());
+            }
+        });
+    }
+
+    public static String parseUserAgent(String ua) {
+        if (ua == null || ua.isEmpty()) return "Unknown / Empty User-Agent";
+        StringBuilder sb = new StringBuilder();
+        String lower = ua.toLowerCase(Locale.US);
+        String os = "Unknown OS";
+        if (lower.contains("android")) os = "Android OS";
+        else if (lower.contains("iphone") || lower.contains("ipad")) os = "iOS (Apple)";
+        else if (lower.contains("windows")) os = "Microsoft Windows";
+        else if (lower.contains("mac os") || lower.contains("macintosh")) os = "macOS";
+        else if (lower.contains("linux")) os = "Linux";
+
+        String browser = "Generic Web Browser";
+        if (lower.contains("chrome") && !lower.contains("edg")) browser = "Google Chrome";
+        else if (lower.contains("edg")) browser = "Microsoft Edge";
+        else if (lower.contains("firefox")) browser = "Mozilla Firefox";
+        else if (lower.contains("safari") && !lower.contains("chrome")) browser = "Apple Safari";
+        else if (lower.contains("curl")) browser = "cURL Command Line";
+
+        sb.append("📱 Device / OS: ").append(os).append("\n");
+        sb.append("🌐 Browser Engine: ").append(browser).append("\n");
+        sb.append("📄 Raw String:\n").append(ua);
+        return sb.toString();
+    }
+
+    public static String minifyHtml(String html) {
+        if (html == null) return "";
+        return html.replaceAll("<!--[\\s\\S]*?-->", "")
+                .replaceAll("(?s)\\s+", " ")
+                .replaceAll("> <", "><")
+                .trim();
+    }
 }

@@ -11,6 +11,7 @@ import java.util.regex.*;
 
 public class TunnelManager {
     private static final String TAG = "TunnelManager";
+    public static final String PROVIDER_AUTO = "Auto (Smart Multi-Provider)";
     public static final String PROVIDER_LOCALHOST_RUN = "Localhost.run (Fast & Free)";
     public static final String PROVIDER_PINGGY = "Pinggy.io (Zero-Config)";
     public static final String PROVIDER_SERVEO = "Serveo.net (HTTP Tunnel)";
@@ -32,6 +33,10 @@ public class TunnelManager {
     private TunnelListener listener;
     private Thread workerThread;
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
+    private Context appContext;
+    private int boundLocalPort = 8080;
+    private String configuredProvider = PROVIDER_AUTO;
+    private int reconnectAttempts = 0;
 
     private TunnelManager() {}
 
@@ -61,51 +66,86 @@ public class TunnelManager {
     public synchronized void startTunnel(Context context, int localPort, String preferredProvider) {
         stopTunnel();
         isRunning = true;
-        activeProvider = preferredProvider == null ? PROVIDER_LOCALHOST_RUN : preferredProvider;
-        activePublicUrl = "";
+        this.appContext = context.getApplicationContext();
+        this.boundLocalPort = localPort;
+        this.configuredProvider = preferredProvider == null ? PROVIDER_AUTO : preferredProvider;
+        this.activeProvider = configuredProvider;
+        this.activePublicUrl = "";
+        this.reconnectAttempts = 0;
 
-        notifyStarting("Connecting to public tunnel server (" + activeProvider + ")...");
+        notifyStarting("Connecting to public tunnel (" + activeProvider + ")...");
 
-        workerThread = new Thread(() -> {
-            try {
-                if (PROVIDER_CUSTOM.equals(activeProvider)) {
-                    SharedPreferences p = context.getSharedPreferences("server", Context.MODE_PRIVATE);
-                    String custom = p.getString("customUrl", "").trim();
-                    if (custom.isEmpty()) {
-                        throw new IOException("Custom public domain not configured. Please set in Server Settings.");
-                    }
-                    activePublicUrl = custom;
-                    notifyActive(activePublicUrl, activeProvider);
-                    return;
-                }
-
-                if (PROVIDER_PINGGY.equals(activeProvider)) {
-                    connectPinggy(localPort);
-                } else if (PROVIDER_SERVEO.equals(activeProvider)) {
-                    connectServeo(localPort);
-                } else {
-                    connectLocalhostRun(localPort);
-                }
-            } catch (Exception e) {
-                Log.e(TAG, "Tunnel startup failed: " + e.getMessage(), e);
-                if (isRunning) {
-                    // Try fallback provider if first choice failed
-                    if (PROVIDER_LOCALHOST_RUN.equals(activeProvider)) {
-                        notifyStarting("Localhost.run busy, switching to Pinggy tunnel...");
-                        try {
-                            connectPinggy(localPort);
-                            return;
-                        } catch (Exception ex) {
-                            Log.e(TAG, "Pinggy fallback failed: " + ex.getMessage());
-                        }
-                    }
-                    notifyError("Public Tunnel Error: " + (e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage()));
-                    stopTunnel();
-                }
-            }
-        });
+        workerThread = new Thread(() -> runTunnelSession());
         workerThread.setDaemon(true);
         workerThread.start();
+    }
+
+    private void runTunnelSession() {
+        try {
+            if (PROVIDER_CUSTOM.equals(configuredProvider)) {
+                SharedPreferences p = appContext.getSharedPreferences("server", Context.MODE_PRIVATE);
+                String custom = p.getString("customUrl", "").trim();
+                if (custom.isEmpty()) {
+                    throw new IOException("Custom public domain not configured. Please set in Server Settings.");
+                }
+                activePublicUrl = custom;
+                activeProvider = PROVIDER_CUSTOM;
+                notifyActive(activePublicUrl, activeProvider);
+                return;
+            }
+
+            if (PROVIDER_PINGGY.equals(configuredProvider)) {
+                connectPinggy(boundLocalPort);
+            } else if (PROVIDER_SERVEO.equals(configuredProvider)) {
+                connectServeo(boundLocalPort);
+            } else if (PROVIDER_LOCALHOST_RUN.equals(configuredProvider)) {
+                connectLocalhostRun(boundLocalPort);
+            } else {
+                // Auto mode: try pinggy -> localhost.run -> serveo
+                boolean connected = false;
+                try {
+                    notifyStarting("Auto Tunnel: Trying Pinggy.io...");
+                    connectPinggy(boundLocalPort);
+                    connected = true;
+                } catch (Exception e1) {
+                    Log.w(TAG, "Auto Tunnel Pinggy failed: " + e1.getMessage());
+                    if (!isRunning) return;
+                }
+
+                if (!connected && isRunning) {
+                    try {
+                        notifyStarting("Auto Tunnel: Trying Localhost.run...");
+                        connectLocalhostRun(boundLocalPort);
+                        connected = true;
+                    } catch (Exception e2) {
+                        Log.w(TAG, "Auto Tunnel Localhost.run failed: " + e2.getMessage());
+                        if (!isRunning) return;
+                    }
+                }
+
+                if (!connected && isRunning) {
+                    notifyStarting("Auto Tunnel: Trying Serveo.net...");
+                    connectServeo(boundLocalPort);
+                }
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "Tunnel attempt failed: " + e.getMessage(), e);
+            if (isRunning) {
+                if (reconnectAttempts < 3) {
+                    reconnectAttempts++;
+                    notifyStarting("Retrying tunnel in 5 seconds (attempt " + reconnectAttempts + "/3)...");
+                    try {
+                        Thread.sleep(5000);
+                    } catch (InterruptedException ignored) {}
+                    if (isRunning) {
+                        runTunnelSession();
+                        return;
+                    }
+                }
+                notifyError("Public Tunnel Error: " + (e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage()));
+                stopTunnel();
+            }
+        }
     }
 
     private void connectLocalhostRun(int localPort) throws Exception {
@@ -207,7 +247,8 @@ public class TunnelManager {
 
         BufferedReader reader = new BufferedReader(new InputStreamReader(in));
         String line;
-        Pattern urlPattern = Pattern.compile("https://[a-zA-Z0-9.-]+(?:\\.pinggy\\.link|\\.pinggy\\.online|\\.free\\.pinggy\\.link)");
+        Pattern urlPattern = Pattern.compile("https://[a-zA-Z0-9.-]+\\.(?:pinggy\\.link|pinggy\\.online|free\\.pinggy\\.link|a\\.pinggy\\.link)");
+        Pattern genericHttps = Pattern.compile("https://[a-zA-Z0-9.-]+");
         long deadline = System.currentTimeMillis() + 15000;
 
         while (isRunning && (line = reader.readLine()) != null) {
@@ -215,6 +256,12 @@ public class TunnelManager {
             Matcher m = urlPattern.matcher(line);
             if (m.find()) {
                 activePublicUrl = m.group();
+                notifyActive(activePublicUrl, PROVIDER_PINGGY);
+                break;
+            }
+            Matcher m2 = genericHttps.matcher(line);
+            if (m2.find() && (line.contains("pinggy") || line.contains("http"))) {
+                activePublicUrl = m2.group();
                 notifyActive(activePublicUrl, PROVIDER_PINGGY);
                 break;
             }
@@ -252,6 +299,7 @@ public class TunnelManager {
         BufferedReader reader = new BufferedReader(new InputStreamReader(in));
         String line;
         Pattern urlPattern = Pattern.compile("https://[a-zA-Z0-9.-]+\\.serveo\\.net");
+        Pattern genericHttps = Pattern.compile("https://[a-zA-Z0-9.-]+");
         long deadline = System.currentTimeMillis() + 15000;
 
         while (isRunning && (line = reader.readLine()) != null) {
@@ -259,6 +307,12 @@ public class TunnelManager {
             Matcher m = urlPattern.matcher(line);
             if (m.find()) {
                 activePublicUrl = m.group();
+                notifyActive(activePublicUrl, PROVIDER_SERVEO);
+                break;
+            }
+            Matcher m2 = genericHttps.matcher(line);
+            if (m2.find() && line.contains("serveo")) {
+                activePublicUrl = m2.group();
                 notifyActive(activePublicUrl, PROVIDER_SERVEO);
                 break;
             }
@@ -287,8 +341,13 @@ public class TunnelManager {
             }
         }
         if (isRunning) {
-            notifyError("Public Tunnel disconnected.");
-            stopTunnel();
+            notifyError("Public Tunnel disconnected. Reconnecting automatically...");
+            try {
+                if (channel != null) { channel.disconnect(); channel = null; }
+                if (session != null) { session.disconnect(); session = null; }
+            } catch (Exception ignored) {}
+            // Attempt auto reconnect
+            runTunnelSession();
         }
     }
 
