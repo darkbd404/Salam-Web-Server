@@ -107,9 +107,9 @@ public class WebServerService extends Service {
             VISITOR_LAST_SEEN.put(ip, System.currentTimeMillis());
             if(!allowed(ip)){respond(s,403,"text/plain","IP blocked");logReq(ip,r,403,"IP_BLOCKED");return;}
             boolean controlRequest=r.path.startsWith("/__salam__/")||r.path.equals("/__salam__");
-            if(controlRequest&&!isLocalIp(ip)&&pref().getString("password","").isEmpty()){
-                respond(s,403,"text/plain","Admin panel restricted. Set web password in app settings to allow remote access.");
-                logReq(ip,r,403,"ADMIN_RESTRICTED");
+            if(controlRequest&&!isControlAuthorized(r,ip)){
+                respond(s,401,"text/html; charset=utf-8",adminLoginPage());
+                logReq(ip,r,401,"ADMIN_AUTH_REQUIRED");
                 return;
             }
             if(!controlRequest&&!rateOk(ip)){respond(s,429,"text/plain","Rate limit exceeded");logReq(ip,r,429,"RATE_LIMIT");return;}
@@ -132,7 +132,10 @@ public class WebServerService extends Service {
         }
 
         if("GET".equals(r.method)||"HEAD".equals(r.method)){
-            if("/__salam__/".equals(r.path)||"/__salam__".equals(r.path))return respond(s,200,"text/html; charset=utf-8",panel());
+            if("/__salam__/".equals(r.path)||"/__salam__".equals(r.path)){
+                String adminKey = getAdminKey(this);
+                return respondWithCookie(s,200,"text/html; charset=utf-8",panel(),"salam_admin_key="+adminKey+"; Path=/; Max-Age=86400; SameSite=Lax");
+            }
             if(r.path.startsWith("/__salam__/api/"))return api(r,s);
             if(f==null)return respond(s,403,"text/plain","Forbidden");
             if(!f.exists())return respond(s,404,"text/plain","Not Found");
@@ -241,6 +244,65 @@ public class WebServerService extends Service {
     private String panel(){return "<!doctype html><html><head><meta name='viewport' content='width=device-width,initial-scale=1'><meta name='theme-color' content='#06172b'><title>Salam Web Server V10</title><style>"+css()+"</style></head><body><header><div class='brand'><span class='bolt'>⚡</span><div><b>Salam Web Server</b><small>V10 • Control Center</small></div></div><span id='dot' class='dot'>●</span></header><main><section class='hero'><div class='leds'><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div><h1 id='status'>SERVER</h1><div id='url' class='url'>Loading…</div><div class='actions'><button onclick='serverAction(&quot;start&quot;)'>▶ START</button><button onclick='serverAction(&quot;stop&quot;)'>■ STOP</button><button onclick='serverAction(&quot;restart&quot;)'>↻ RESTART</button><button onclick='copyUrl()'>🔗 COPY URL</button></div></section><section class='grid' id='stats'></section><section class='panel'><h2>📁 FILE MANAGER</h2><div class='actions'><button onclick='mkdir()'>📂 NEW FOLDER</button><button onclick='upload()'>⬆️ UPLOAD</button><button onclick='touch()'>📄 NEW FILE</button><button onclick='zipCurrent()'>📦 ZIP</button><button onclick='extract()'>🗜️ EXTRACT</button></div><input id='up' type='file' multiple><input id='q' placeholder='🔎 Search files' oninput='render()'><div id='files'></div></section><section class='panel'><h2>🔐 SECURITY</h2><p>Blocked IPs: <b id='blocked'>0</b></p><div class='actions'><button onclick='blockIp()'>🚫 BLOCK IP</button><button onclick='unblockIp()'>🔓 UNBLOCK</button><button onclick='clearBlock()'>🧹 CLEAR BLOCKLIST</button></div></section><section class='panel'><h2>📋 LIVE REQUEST LOG</h2><pre id='logs'>Loading…</pre></section><section class='panel'><h2>🕘 ACCESS HISTORY</h2><pre id='history'>Loading…</pre></section><section class='panel'><h2>⚙️ SERVER SETTINGS</h2><div class='form'><label>Requests / minute<input id='rate' type='number' min='1'></label><label>Maximum clients<input id='max' type='number' min='1'></label><label>Custom hostname<input id='host' placeholder='salam.local'></label><label>Web password<input id='pass' type='password' placeholder='Leave empty to disable'></label><button onclick='saveSettings()'>💾 SAVE SETTINGS</button></div></section></main><script>"+js()+"</script></body></html>";}
     private String css(){return "*{box-sizing:border-box}body{margin:0;padding:14px;background:radial-gradient(circle at 15% 0,#123b62 0,#030b17 42%);color:#f7fbff;font:14px system-ui,sans-serif}header,.card,.panel{background:linear-gradient(145deg,#0a2038,#0e2d4c);border:1px solid #164b72;border-radius:24px;padding:16px;margin-bottom:12px;box-shadow:0 14px 40px #0008}.brand{display:flex;gap:12px;align-items:center}.brand b{font-size:24px;font-weight:900}.brand small{display:block;font-size:11px;color:#8eabc9;margin-top:4px}.bolt{font-size:31px}.dot{color:#21f59b;font-size:22px}main{max-width:900px;margin:auto}.hero{background:linear-gradient(145deg,#071c32,#05111f);border:1px solid #11486b;border-radius:26px;padding:22px;margin-bottom:14px;box-shadow:0 0 30px #001c2e}.leds{display:flex;justify-content:center;gap:13px;margin:4px 0 22px}.leds i{width:18px;height:18px;border-radius:50%;display:block;background:#263849;box-shadow:0 0 5px #1b2d3d}.leds i:nth-child(1){background:#25ef9c;box-shadow:0 0 18px #25ef9c}.leds i:nth-child(2){background:#21d9ff;box-shadow:0 0 18px #21d9ff}.leds i:nth-child(3){background:#b44cff;box-shadow:0 0 18px #b44cff}.leds i:nth-child(4){background:#ffd52f;box-shadow:0 0 18px #ffd52f}.leds i:nth-child(5){background:#fff;box-shadow:0 0 18px #fff}.leds i:nth-child(6){background:#ff8a24;box-shadow:0 0 18px #ff8a24}.leds i:nth-child(7){background:#ff3658;box-shadow:0 0 18px #ff3658}h1{text-align:center;font-size:24px;color:#21f59b;letter-spacing:.5px}.url{background:#020c19;border-radius:18px;padding:16px;text-align:center;color:#21d9ff;word-break:break-all;margin:15px 0}.actions{display:flex;flex-wrap:wrap;gap:8px}button{border:0;border-radius:15px;padding:13px 15px;background:linear-gradient(100deg,#13d8ff,#4b4dff);color:#fff;font-weight:800;cursor:pointer;flex:1;min-width:115px}.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-bottom:14px}.stat{background:#071c32;border:1px solid #11486b;border-radius:20px;padding:15px}.stat b{font-size:22px;color:#21d9ff;display:block;margin-top:5px}.stat small{color:#8eabc9}.file{display:flex;align-items:center;gap:9px;background:#06172b;border:1px solid #123650;border-radius:15px;padding:12px;margin:7px 0}.file a{color:#fff;text-decoration:none;font-weight:700;flex:1}.file small{color:#89a7c0;display:block}.form label{display:block;color:#8eabc5;margin:10px 0}.form input{display:block;width:100%;margin-top:6px;padding:12px;border-radius:12px;border:1px solid #1a4b69;background:#020c19;color:#fff}pre{max-height:340px;overflow:auto;white-space:pre-wrap;word-break:break-word;color:#a8c4db;background:#020c19;border-radius:14px;padding:12px}@media(min-width:700px){.grid{grid-template-columns:repeat(4,minmax(0,1fr))}}";}
     private String js(){return "const $=x=>document.getElementById(x);let data=[];let busy=false;async function j(u,o){let r=await fetch(u,o);if(!r.ok)throw new Error(r.status+' '+r.statusText);return r.json()}async function t(u){let r=await fetch(u);if(!r.ok)throw new Error(r.status+' '+r.statusText);return r.text()}async function refresh(){if(busy)return;busy=true;try{let s=await j('/__salam__/api/status');$('status').textContent=s.running?'SERVER ONLINE':'SERVER OFFLINE';$('status').style.color=s.running?'#21f59b':'#ff3658';$('dot').style.color=s.running?'#21f59b':'#ff3658';$('url').textContent=s.url;let v=[['🧠 CPU',s.cpu],['💾 RAM',s.ram],['💽 Storage',s.storage],['👥 Clients',s.clients],['📊 Requests',s.requests],['📡 Traffic',s.traffic||((s.rx+s.tx)+' bytes')],['⚡ Flow Speed','↓ '+(s.rxSpeed||'0 B/s')+'  ↑ '+(s.txSpeed||'0 B/s')],['⏱️ Uptime',s.uptime],['🌐 Network',s.network]];$('stats').innerHTML=v.map(x=>'<div class=stat>'+x[0]+'<b>'+x[1]+'</b></div>').join('');data=await j('/__salam__/api/files');render();$('logs').textContent=await t('/__salam__/api/logs');$('history').textContent=await t('/__salam__/api/history');let q=await j('/__salam__/api/settings');$('rate').value=q.rate;$('max').value=q.maxClients;$('host').value=q.customUrl||'';$('blocked').textContent=(q.blockIps||'').split(',').filter(Boolean).length}catch(e){$('logs').textContent='Control panel error: '+e}finally{busy=false}}function render(){let q=($('q').value||'').toLowerCase();$('files').innerHTML=data.filter(x=>String(x.name).toLowerCase().includes(q)).map(x=>'<div class=file><a href=\"'+x.path+'\">'+(x.dir?'📂':'📄')+' '+x.name+'<small>'+x.size+' bytes</small></a><a href=\"'+x.path+'\" download>⬇️</a></div>').join('')}async function act(b){return j('/__salam__/api/action',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:b})}function serverAction(a){act('action='+a).then(refresh)}function copyUrl(){if(navigator.clipboard)navigator.clipboard.writeText($('url').textContent);else alert($('url').textContent)}function mkdir(){let n=prompt('Folder name');if(n)act('action=mkdir&path='+encodeURIComponent('/'+n)).then(refresh)}function touch(){let n=prompt('File name');if(n)act('action=touch&path='+encodeURIComponent('/'+n)).then(refresh)}function blockIp(){let n=prompt('IP to block');if(n)act('action=block&ip='+encodeURIComponent(n)).then(refresh)}function unblockIp(){let n=prompt('IP to unblock');if(n)act('action=unblock&ip='+encodeURIComponent(n)).then(refresh)}function clearBlock(){act('action=clear-block').then(refresh)}function zipCurrent(){let n=prompt('Path to ZIP, e.g. /folder');if(n)act('action=zip&path='+encodeURIComponent(n)).then(refresh)}function extract(){let n=prompt('ZIP path');if(n)act('action=extract&path='+encodeURIComponent(n)+'&to=%2F').then(refresh)}async function upload(){let f=$('up').files;if(!f.length)return alert('Select files');let m=new FormData();for(let x of f)m.append('file',x);let r=await fetch('/__salam__/api/upload',{method:'POST',body:m});let z=await r.json();alert(z.message||'Upload complete');refresh()}async function saveSettings(){let b='action=saveSettings&rate='+encodeURIComponent($('rate').value||120)+'&maxClients='+encodeURIComponent($('max').value||32)+'&customUrl='+encodeURIComponent($('host').value)+'&password='+encodeURIComponent($('pass').value);await act(b);alert('Settings saved');refresh()}refresh();setInterval(refresh,2500);";}
+
+    private int respondWithCookie(Socket s,int code,String type,String body,String cookie)throws IOException{
+        byte[]b=body.getBytes(StandardCharsets.UTF_8);
+        OutputStream o=s.getOutputStream();
+        String h="HTTP/1.1 "+code+" "+reason(code)+"\r\nContent-Type: "+type+"\r\nContent-Length: "+b.length+"\r\nSet-Cookie: "+cookie+"\r\nCache-Control: no-store\r\nX-Content-Type-Options: nosniff\r\nConnection: close\r\n\r\n";
+        byte[]hb=h.getBytes(StandardCharsets.ISO_8859_1);
+        o.write(hb);
+        o.write(b);
+        o.flush();
+        long out=b.length+hb.length;
+        txBytes+=out;
+        trackTx(out);
+        return code;
+    }
+
+    public static synchronized String getAdminKey(Context c){
+        SharedPreferences sp=c.getSharedPreferences("server",Context.MODE_PRIVATE);
+        String key=sp.getString("adminKey","");
+        if(key.isEmpty()){
+            key=UUID.randomUUID().toString().replace("-","").substring(0,16);
+            sp.edit().putString("adminKey",key).apply();
+        }
+        return key;
+    }
+
+    private boolean isControlAuthorized(Req r,String ip){
+        String validKey=getAdminKey(this);
+        String pass=pref().getString("password","");
+        if(r.query!=null&&!r.query.isEmpty()){
+            Map<String,String> qm=form(r.query);
+            String k=qm.get("key");
+            if(k==null)k=qm.get("token");
+            if(k!=null&&(k.equals(validKey)||(!pass.isEmpty()&&k.equals(pass))))return true;
+            String p=qm.get("password");
+            if(p!=null&&(p.equals(validKey)||(!pass.isEmpty()&&p.equals(pass))))return true;
+        }
+        String cookie=r.headers.get("cookie");
+        if(cookie!=null){
+            if(cookie.contains("salam_admin_key="+validKey))return true;
+            if(!pass.isEmpty()&&cookie.contains("salam_admin_key="+pass))return true;
+            if(!pass.isEmpty()&&cookie.contains("salam_admin_pass="+pass))return true;
+        }
+        String auth=r.headers.get("authorization");
+        if(auth!=null&&auth.startsWith("Basic ")){
+            try{
+                String d=new String(Base64.getDecoder().decode(auth.substring(6)),StandardCharsets.UTF_8);
+                int x=d.indexOf(':');
+                if(x>=0){
+                    String credential=d.substring(x+1);
+                    if(credential.equals(validKey)||(!pass.isEmpty()&&credential.equals(pass)))return true;
+                }
+            }catch(Exception ignored){}
+        }
+        return false;
+    }
+
+    private String adminLoginPage(){
+        return "<!doctype html><html><head><meta name='viewport' content='width=device-width,initial-scale=1'><meta name='theme-color' content='#020712'><title>Admin Security Gateway • Salam Web Server</title><style>*{box-sizing:border-box}body{margin:0;padding:24px 16px;background:radial-gradient(circle at 50% 0,#10223d 0,#010712 60%);color:#fff;font-family:system-ui,-apple-system,sans-serif;min-height:100vh;display:flex;align-items:center;justify-content:center}.card{max-width:440px;width:100%;background:linear-gradient(145deg,#07172b,#030d1a);border:1px solid #144975;border-radius:24px;padding:32px 24px;box-shadow:0 20px 50px rgba(0,0,0,0.8),0 0 30px rgba(0,217,255,0.15);text-align:center}.icon{font-size:42px;margin-bottom:12px}.badge{display:inline-block;padding:5px 14px;background:rgba(0,229,255,0.12);border:1px solid #00e5ff;color:#00e5ff;border-radius:20px;font-size:11px;font-weight:800;letter-spacing:1px;margin-bottom:14px}h1{font-size:22px;color:#fff;margin:0 0 8px;font-weight:800}p{font-size:13px;color:#94b6d9;line-height:1.6;margin:0 0 20px}input{width:100%;padding:14px;border-radius:14px;background:#020b17;border:1px solid #1a4d7c;color:#00f0ff;font-size:15px;margin-bottom:16px;outline:none;text-align:center;letter-spacing:2px}input:focus{border-color:#00f0ff;box-shadow:0 0 15px rgba(0,240,255,0.3)}button{width:100%;padding:14px;border-radius:14px;border:none;background:linear-gradient(135deg,#00f0ff,#4b4dff);color:#fff;font-weight:800;font-size:14px;cursor:pointer;box-shadow:0 6px 20px rgba(0,240,255,0.35)}button:hover{opacity:0.9}.home-link{display:inline-block;margin-top:16px;color:#6b8aa8;font-size:12px;text-decoration:none}</style></head><body><div class='card'><div class='icon'>🛡️</div><div class='badge'>AUTHENTICATION GATEWAY</div><h1>Admin Control Center</h1><p>Access to this server management console is restricted.<br>Please enter the <b>Admin Key</b> or <b>Web Password</b>.</p><form onsubmit='doLogin(event)'><input id='pwd' type='password' placeholder='Enter Admin Key / Password' required autofocus><button type='submit'>🔓 UNLOCK CPANEL</button></form><a class='home-link' href='/'>← Back to Website Homepage</a></div><script>function doLogin(e){e.preventDefault();var val=document.getElementById('pwd').value.trim();if(!val)return;document.cookie='salam_admin_key='+encodeURIComponent(val)+'; path=/; max-age=86400';window.location.href='/__salam__?key='+encodeURIComponent(val);}</script></body></html>";
+    }
 
     private int respond(Socket s,int code,String type,String body)throws IOException{byte[]b=body.getBytes(StandardCharsets.UTF_8);OutputStream o=s.getOutputStream();String h="HTTP/1.1 "+code+" "+reason(code)+"\r\nContent-Type: "+type+"\r\nContent-Length: "+b.length+"\r\nCache-Control: no-store\r\nX-Content-Type-Options: nosniff\r\nConnection: close\r\n\r\n";byte[]hb=h.getBytes(StandardCharsets.ISO_8859_1);o.write(hb);o.write(b);o.flush();long out=b.length+hb.length;txBytes+=out;trackTx(out);return code;}
     private int sendFile(Socket s,File f,boolean head)throws IOException{OutputStream o=s.getOutputStream();String h="HTTP/1.1 200 OK\r\nContent-Type: "+mime(f.getName())+"\r\nContent-Length: "+f.length()+"\r\nCache-Control: no-store\r\nX-Content-Type-Options: nosniff\r\nConnection: close\r\n\r\n";byte[]hb=h.getBytes(StandardCharsets.ISO_8859_1);o.write(hb);long out=hb.length;if(!head)try(InputStream i=new FileInputStream(f)){byte[]b=new byte[16384];int n;while((n=i.read(b))>0){o.write(b,0,n);out+=n;}}o.flush();txBytes+=out;trackTx(out);return 200;}

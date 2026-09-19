@@ -201,7 +201,7 @@ public class MainActivity extends Activity {
     void home() {
         // Main Server Control Panel
         ServerPanel sp = new ServerPanel(this);
-        body.addView(sp, new LinearLayout.LayoutParams(-1, dp(310)));
+        body.addView(sp, new LinearLayout.LayoutParams(-1, dp(345)));
 
         // Scope Switcher Card: Public Internet (Global) vs Local Wi-Fi (LAN)
         section("🌍  SERVER ACCESS SCOPE");
@@ -291,13 +291,16 @@ public class MainActivity extends Activity {
 
         // Quick Tools Row
         section("⚡  QUICK SUITE SHORTCUTS");
-        LinearLayout r1 = new LinearLayout(this), r2 = new LinearLayout(this);
+        LinearLayout r1 = new LinearLayout(this), r2 = new LinearLayout(this), r3 = new LinearLayout(this);
         addTile(r1, R.drawable.ic_dashboard, "Network Tools", "Ping • Ports • DNS • LAN", () -> show(1));
         addTile(r1, R.drawable.ic_files, "Web Files", "Upload • Edit • ZIP", () -> show(2));
         addTile(r2, R.drawable.ic_monitor, "Traffic & Flow", "Speeds • Bandwidth", () -> show(3));
         addTile(r2, R.drawable.ic_security, "IP Security", "Blocklist • Passwords", () -> security());
+        addTile(r3, R.drawable.ic_settings, "⚙️ Web Admin CPanel", "Direct Browser Control Center", () -> openWebAdmin());
+        addTile(r3, R.drawable.ic_monitor, "Visitors & Clients", "Track active IP connections", () -> networkFlowDialog());
         body.addView(r1);
         body.addView(r2);
+        body.addView(r3);
 
         // Live Network Flow Speed Card
         section("🌊  LIVE NETWORK FLOW");
@@ -2755,6 +2758,7 @@ public class MainActivity extends Activity {
     // ==========================================
     void settings() {
         section("⚙️  CONTROL CENTER & CONFIGURATION");
+        setting("⚡", "Open Web Admin CPanel", "Direct access to full Web Control Center in browser", () -> openWebAdmin());
         setting("🌍", "Public / Private Server Scope", "Toggle Global Public URL or Local Wi-Fi only", () -> scopeDialog());
         setting("🛰️", "Tunnel Provider", "Localhost.run, Pinggy, Serveo, or Custom Domain", () -> chooseTunnelProvider());
         setting("🛍️", "Website Templates", "Deploy E-Commerce Online Store or Web Portal", () -> templateDialog());
@@ -3075,6 +3079,16 @@ public class MainActivity extends Activity {
         }
     }
 
+    void openWebAdmin() {
+        if (!WebServerService.running) {
+            toast("Please start the server first");
+            return;
+        }
+        String key = WebServerService.getAdminKey(this);
+        String adminUrl = displayUrl() + "/__salam__?key=" + Uri.encode(key);
+        openBrowser(adminUrl);
+    }
+
     void startServer() {
         toast("Starting Server & Public Engine...");
         Intent i = new Intent(this, WebServerService.class).setAction("START");
@@ -3205,16 +3219,37 @@ public class MainActivity extends Activity {
             addView(url);
 
             LinearLayout controls = new LinearLayout(c);
+            controls.setOrientation(LinearLayout.VERTICAL);
             controls.setGravity(Gravity.CENTER);
             controls.setPadding(0, 0, 0, 0);
 
+            LinearLayout r1 = new LinearLayout(c);
+            r1.setOrientation(LinearLayout.HORIZONTAL);
             startBtn = button("▶  START SERVER");
             webBtn = button("🌐 OPEN WEB");
-            qrBtn = button("📱 QR CODE");
+            LinearLayout.LayoutParams lp1 = new LinearLayout.LayoutParams(0, dp(44), 1);
+            lp1.setMargins(0, 0, dp(4), 0);
+            r1.addView(startBtn, lp1);
+            LinearLayout.LayoutParams lp2 = new LinearLayout.LayoutParams(0, dp(44), 1);
+            lp2.setMargins(dp(4), 0, 0, 0);
+            r1.addView(webBtn, lp2);
+            controls.addView(r1);
 
-            controls.addView(startBtn, new LinearLayout.LayoutParams(0, dp(50), 1));
-            controls.addView(webBtn, new LinearLayout.LayoutParams(0, dp(50), 1));
-            controls.addView(qrBtn, new LinearLayout.LayoutParams(0, dp(50), 1));
+            LinearLayout r2 = new LinearLayout(c);
+            r2.setOrientation(LinearLayout.HORIZONTAL);
+            r2.setPadding(0, dp(6), 0, 0);
+            qrBtn = button("📱 QR CODE");
+            TextView adminBtn = button("⚙️ WEB CPANEL");
+            adminBtn.setBackground(grad(14));
+            adminBtn.setOnClickListener(v -> openWebAdmin());
+            LinearLayout.LayoutParams lp3 = new LinearLayout.LayoutParams(0, dp(44), 1);
+            lp3.setMargins(0, 0, dp(4), 0);
+            r2.addView(qrBtn, lp3);
+            LinearLayout.LayoutParams lp4 = new LinearLayout.LayoutParams(0, dp(44), 1);
+            lp4.setMargins(dp(4), 0, 0, 0);
+            r2.addView(adminBtn, lp4);
+            controls.addView(r2);
+
             addView(controls);
 
             startBtn.setOnClickListener(v -> {
@@ -3265,16 +3300,16 @@ public class MainActivity extends Activity {
             state.measure(MeasureSpec.makeMeasureSpec(w, MeasureSpec.EXACTLY), MeasureSpec.makeMeasureSpec(dp(44), MeasureSpec.EXACTLY));
             url.measure(MeasureSpec.makeMeasureSpec(w - dp(24), MeasureSpec.EXACTLY), MeasureSpec.makeMeasureSpec(dp(56), MeasureSpec.EXACTLY));
             ViewGroup controls = (ViewGroup) getChildAt(2);
-            controls.measure(MeasureSpec.makeMeasureSpec(w - dp(24), MeasureSpec.EXACTLY), MeasureSpec.makeMeasureSpec(dp(50), MeasureSpec.EXACTLY));
-            setMeasuredDimension(w, dp(310));
+            controls.measure(MeasureSpec.makeMeasureSpec(w - dp(24), MeasureSpec.EXACTLY), MeasureSpec.makeMeasureSpec(dp(98), MeasureSpec.EXACTLY));
+            setMeasuredDimension(w, dp(345));
         }
 
         protected void onLayout(boolean c, int l, int t, int r, int b) {
             int w = r - l;
-            state.layout(0, dp(70), w, dp(114));
-            url.layout(dp(12), dp(128), w - dp(12), dp(184));
+            state.layout(0, dp(65), w, dp(109));
+            url.layout(dp(12), dp(115), w - dp(12), dp(171));
             View controls = getChildAt(2);
-            controls.layout(dp(12), dp(200), w - dp(12), dp(250));
+            controls.layout(dp(12), dp(179), w - dp(12), dp(277));
         }
 
         protected void onDraw(Canvas c) {
