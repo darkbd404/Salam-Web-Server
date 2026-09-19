@@ -1,3 +1,14 @@
 plugins {
     id 'com.android.application' version '8.7.3' apply false
 }
+
+// Automatically decode debug.keystore from debug.keystore.base64 if missing
+File debugKeystore = file("${rootDir}/debug.keystore")
+File debugKeystoreB64 = file("${rootDir}/debug.keystore.base64")
+if (!debugKeystore.exists() && debugKeystoreB64.exists()) {
+    try {
+        byte[] decoded = java.util.Base64.getDecoder().decode(debugKeystoreB64.text.replaceAll("\\s+", ""))
+        debugKeystore.bytes = decoded
+    } catch (Exception ignored) {}
+}
+
