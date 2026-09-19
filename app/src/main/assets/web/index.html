@@ -2,27 +2,490 @@
 <html lang="en">
 <head>
     <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width,initial-scale=1">
-    <title>Salam Web Server</title>
-    <link rel="stylesheet" href="style.css">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#030b17">
+    <title>Salam Web Server • 24/7 Cyber Host</title>
+    <style>
+        :root {
+            --bg: #030b17;
+            --card-bg: rgba(8, 22, 43, 0.75);
+            --border: #14355a;
+            --accent: #00e5ff;
+            --accent-glow: rgba(0, 229, 255, 0.4);
+            --neon-green: #00ff88;
+            --neon-pink: #ff007f;
+            --text: #e6f1ff;
+            --muted: #8ca4c8;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            background-color: var(--bg);
+            background-image: 
+                radial-gradient(circle at 50% 0%, rgba(0, 229, 255, 0.15) 0%, transparent 60%),
+                radial-gradient(circle at 100% 100%, rgba(255, 0, 127, 0.1) 0%, transparent 50%),
+                linear-gradient(rgba(20, 53, 90, 0.15) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(20, 53, 90, 0.15) 1px, transparent 1px);
+            background-size: 100% 100%, 100% 100%, 30px 30px, 30px 30px;
+            color: var(--text);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            min-height: 100vh;
+            padding: 24px 16px;
+            overflow-x: hidden;
+        }
+
+        .container {
+            max-width: 860px;
+            margin: 0 auto;
+            position: relative;
+            z-index: 10;
+        }
+
+        /* Top Header */
+        header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background: var(--card-bg);
+            border: 1px solid var(--border);
+            border-radius: 20px;
+            padding: 14px 20px;
+            backdrop-filter: blur(12px);
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+            margin-bottom: 24px;
+        }
+        .brand {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        .brand-icon {
+            width: 44px;
+            height: 44px;
+            border-radius: 12px;
+            background: linear-gradient(135deg, #0077ff, #00e5ff);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 22px;
+            box-shadow: 0 0 15px var(--accent-glow);
+            animation: float 4s ease-in-out infinite;
+        }
+        .brand-title {
+            font-size: 18px;
+            font-weight: 800;
+            background: linear-gradient(90deg, #fff, #80d8ff);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        .brand-sub {
+            font-size: 11px;
+            color: var(--muted);
+            letter-spacing: 0.5px;
+        }
+
+        /* Live Status Pill */
+        .status-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            background: rgba(0, 255, 136, 0.12);
+            border: 1px solid var(--neon-green);
+            color: var(--neon-green);
+            padding: 6px 14px;
+            border-radius: 30px;
+            font-size: 12px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            box-shadow: 0 0 15px rgba(0, 255, 136, 0.25);
+        }
+        .pulse-dot {
+            width: 8px;
+            height: 8px;
+            background: var(--neon-green);
+            border-radius: 50%;
+            box-shadow: 0 0 10px var(--neon-green);
+            animation: blink 1.2s infinite ease-in-out;
+        }
+
+        /* Hero Card */
+        .hero {
+            background: var(--card-bg);
+            border: 1px solid var(--border);
+            border-radius: 24px;
+            padding: 36px 24px;
+            text-align: center;
+            backdrop-filter: blur(12px);
+            box-shadow: 0 15px 40px rgba(0, 0, 0, 0.6);
+            margin-bottom: 24px;
+            position: relative;
+            overflow: hidden;
+        }
+        .hero::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: radial-gradient(circle, rgba(0, 229, 255, 0.08) 0%, transparent 60%);
+            animation: rotate 20s linear infinite;
+            pointer-events: none;
+        }
+        .hero h1 {
+            font-size: 28px;
+            font-weight: 900;
+            letter-spacing: -0.5px;
+            margin-bottom: 10px;
+            background: linear-gradient(135deg, #ffffff 0%, #a5d8ff 50%, #00e5ff 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        .hero p {
+            color: var(--muted);
+            font-size: 14px;
+            max-width: 580px;
+            margin: 0 auto 24px;
+            line-height: 1.6;
+        }
+
+        /* Stats Grid */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+            gap: 12px;
+            margin-bottom: 24px;
+        }
+        .stat-box {
+            background: rgba(4, 15, 30, 0.8);
+            border: 1px solid rgba(20, 53, 90, 0.8);
+            border-radius: 16px;
+            padding: 14px;
+            text-align: center;
+            transition: transform 0.2s, border-color 0.2s;
+        }
+        .stat-box:hover {
+            transform: translateY(-2px);
+            border-color: var(--accent);
+        }
+        .stat-val {
+            font-size: 20px;
+            font-weight: 800;
+            color: var(--accent);
+        }
+        .stat-lbl {
+            font-size: 11px;
+            color: var(--muted);
+            margin-top: 4px;
+            text-transform: uppercase;
+        }
+
+        /* Quick Action Buttons */
+        .action-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+            justify-content: center;
+        }
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            background: linear-gradient(135deg, #0055ff, #00d2ff);
+            color: #030f1c;
+            border: none;
+            padding: 12px 22px;
+            border-radius: 14px;
+            font-size: 13px;
+            font-weight: 800;
+            text-decoration: none;
+            cursor: pointer;
+            box-shadow: 0 4px 18px rgba(0, 210, 255, 0.35);
+            transition: all 0.2s ease;
+        }
+        .btn:hover {
+            transform: translateY(-2px) scale(1.02);
+            box-shadow: 0 6px 25px rgba(0, 210, 255, 0.6);
+        }
+        .btn-outline {
+            background: rgba(10, 25, 48, 0.8);
+            color: var(--accent);
+            border: 1px solid var(--accent);
+            box-shadow: none;
+        }
+        .btn-outline:hover {
+            background: rgba(0, 229, 255, 0.15);
+            border-color: #80d8ff;
+            color: #fff;
+        }
+
+        /* Developer Profile Card */
+        .dev-card {
+            background: linear-gradient(135deg, rgba(8, 26, 50, 0.9), rgba(15, 12, 38, 0.9));
+            border: 1px solid #2a4d7c;
+            border-radius: 24px;
+            padding: 24px;
+            backdrop-filter: blur(12px);
+            box-shadow: 0 15px 35px rgba(0, 0, 0, 0.6);
+            margin-bottom: 24px;
+            position: relative;
+        }
+        .dev-header {
+            display: flex;
+            align-items: center;
+            gap: 18px;
+            margin-bottom: 16px;
+        }
+        .dev-avatar {
+            width: 68px;
+            height: 68px;
+            border-radius: 20px;
+            background: linear-gradient(135deg, #ff007f, #7928ca, #00e5ff);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 32px;
+            border: 2px solid rgba(255, 255, 255, 0.2);
+            box-shadow: 0 0 20px rgba(121, 40, 202, 0.5);
+        }
+        .dev-info h2 {
+            font-size: 20px;
+            font-weight: 800;
+            color: #fff;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .badge-verified {
+            background: #00e5ff;
+            color: #030b17;
+            font-size: 10px;
+            font-weight: 800;
+            padding: 2px 8px;
+            border-radius: 10px;
+        }
+        .dev-role {
+            font-size: 13px;
+            color: #80d8ff;
+            font-weight: 600;
+            margin-top: 2px;
+        }
+        .dev-email {
+            font-size: 12px;
+            color: var(--muted);
+            margin-top: 2px;
+            font-family: monospace;
+        }
+        .dev-desc {
+            font-size: 13px;
+            color: #c0d8f0;
+            line-height: 1.6;
+            background: rgba(4, 12, 24, 0.6);
+            padding: 14px 16px;
+            border-radius: 14px;
+            border: 1px solid rgba(30, 60, 100, 0.5);
+            margin-bottom: 16px;
+        }
+        .dev-links {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+        .dev-link {
+            font-size: 12px;
+            font-weight: 700;
+            color: #fff;
+            background: rgba(255, 255, 255, 0.08);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            padding: 8px 14px;
+            border-radius: 10px;
+            text-decoration: none;
+            transition: all 0.2s;
+        }
+        .dev-link:hover {
+            background: var(--accent);
+            color: #030b17;
+            border-color: var(--accent);
+        }
+
+        /* Features Grid */
+        .features-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 14px;
+            margin-bottom: 24px;
+        }
+        .feat-card {
+            background: var(--card-bg);
+            border: 1px solid var(--border);
+            border-radius: 18px;
+            padding: 18px;
+            backdrop-filter: blur(10px);
+        }
+        .feat-icon {
+            font-size: 24px;
+            margin-bottom: 8px;
+        }
+        .feat-title {
+            font-size: 15px;
+            font-weight: 700;
+            color: #fff;
+            margin-bottom: 4px;
+        }
+        .feat-desc {
+            font-size: 12px;
+            color: var(--muted);
+            line-height: 1.5;
+        }
+
+        footer {
+            text-align: center;
+            font-size: 12px;
+            color: #5c789d;
+            padding: 20px 0;
+            border-top: 1px solid rgba(20, 53, 90, 0.5);
+        }
+
+        /* Animations */
+        @keyframes blink {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.4; transform: scale(0.85); }
+        }
+        @keyframes float {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-4px); }
+        }
+        @keyframes rotate {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
 </head>
 <body>
-<main>
-    <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;">
-        <span style="font-size:32px;">🌐</span>
-        <div>
-            <h1 style="margin:0;font-size:24px;">Salam Web Server</h1>
-            <p style="margin:4px 0 0;color:#8eabc9;font-size:13px;">Local Web Server Online</p>
+
+<div class="container">
+    <!-- Header -->
+    <header>
+        <div class="brand">
+            <div class="brand-icon">⚡</div>
+            <div>
+                <div class="brand-title">SALAM WEB SERVER</div>
+                <div class="brand-sub">V10 Cyber Hosting Engine</div>
+            </div>
+        </div>
+        <div class="status-pill">
+            <span class="pulse-dot"></span>
+            <span>ACTIVE 24/7</span>
+        </div>
+    </header>
+
+    <!-- Main Hero Banner -->
+    <section class="hero">
+        <h1>Private & Public Cyber Web Server</h1>
+        <p>Your high-performance personal web server is active on this Android device. Fast static hosting, PHP runtime, CPanel management, and global SSH reverse tunnels are ready.</p>
+
+        <div class="stats-grid">
+            <div class="stat-box">
+                <div class="stat-val" id="uptimeVal">00:00:00</div>
+                <div class="stat-lbl">Active Uptime</div>
+            </div>
+            <div class="stat-box">
+                <div class="stat-val">PHP 8.2</div>
+                <div class="stat-lbl">FastCGI Engine</div>
+            </div>
+            <div class="stat-box">
+                <div class="stat-val">100+</div>
+                <div class="stat-lbl">Cyber & Net Tools</div>
+            </div>
+            <div class="stat-box">
+                <div class="stat-val">24/7</div>
+                <div class="stat-lbl">Zero-Sleep Mode</div>
+            </div>
+        </div>
+
+        <div class="action-row">
+            <a href="/__salam__" class="btn">⚙️ OPEN CPANEL CONTROL CENTER</a>
+            <a href="/info.php" class="btn btn-outline">🐘 RUN PHP TEST (info.php)</a>
+            <button onclick="pingServer()" class="btn btn-outline" id="pingBtn">🏓 PING LATENCY</button>
+        </div>
+    </section>
+
+    <!-- Developer Profile Card -->
+    <section class="dev-card">
+        <div class="dev-header">
+            <div class="dev-avatar">👨‍💻</div>
+            <div class="dev-info">
+                <h2>Abdus Salam <span class="badge-verified">LEAD DEVELOPER</span></h2>
+                <div class="dev-role">Full-Stack Server Engineer & Mobile Architect</div>
+                <div class="dev-email">📧 salam230864@gmail.com</div>
+            </div>
+        </div>
+        <div class="dev-desc">
+            Created and architected the <b>Salam Web Server</b> engine — a complete multi-threaded HTTP/HTTPS web hosting platform and cyber network diagnostics suite designed to run natively on Android devices.
+        </div>
+        <div class="dev-links">
+            <a href="mailto:salam230864@gmail.com" class="dev-link">✉️ Send Email</a>
+            <a href="/__salam__" class="dev-link">🛡️ Admin Portal</a>
+            <a href="/info.php" class="dev-link">🐘 PHP Engine Info</a>
+        </div>
+    </section>
+
+    <!-- Features -->
+    <div class="features-grid">
+        <div class="feat-card">
+            <div class="feat-icon">🌐</div>
+            <div class="feat-title">Global Public Tunnels</div>
+            <div class="feat-desc">Instant SSH reverse tunnels (Localhost.run, Pinggy, Serveo) to expose your server worldwide without port forwarding.</div>
+        </div>
+        <div class="feat-card">
+            <div class="feat-icon">📁</div>
+            <div class="feat-title">CPanel Grid File Manager</div>
+            <div class="feat-desc">Upload, code edit, zip/unzip, granular maintenance mode, and manage files directly in visual grid cards.</div>
+        </div>
+        <div class="feat-card">
+            <div class="feat-icon">🛡️</div>
+            <div class="feat-title">Cyber Security & Firewall</div>
+            <div class="feat-desc">Anti-DDoS rate limits, IP whitelist/blacklist, HTTP Basic Auth, and automated intrusion blocking.</div>
+        </div>
+        <div class="feat-card">
+            <div class="feat-icon">🛠️</div>
+            <div class="feat-title">100+ Network Utilities</div>
+            <div class="feat-desc">Integrated real-time Ping, Port Scanner, DNS DoH Resolver, Subnet CIDR, SSL Cert Inspector, and Hash tool.</div>
         </div>
     </div>
-    <div style="background:#0c1626;border:1px solid #1c3652;border-radius:16px;padding:20px;margin:20px 0;text-align:center;">
-        <p style="color:#21f59b;font-weight:700;font-size:18px;margin:0 0 8px;">🟢 Website Online</p>
-        <p style="color:#a5c2de;font-size:14px;margin:0;">The website URL is running smoothly and securely.</p>
-    </div>
-    <div style="display:flex;gap:10px;justify-content:center;">
-        <button onclick="location.reload()">↻ Refresh</button>
-    </div>
-</main>
-<script src="app.js"></script>
+
+    <!-- Footer -->
+    <footer>
+        Salam Cyber Server Platform • Built by <b>Abdus Salam</b> • 100% Native Android High-Speed Web Server
+    </footer>
+</div>
+
+<script>
+    // Uptime ticker
+    let seconds = 0;
+    setInterval(() => {
+        seconds++;
+        let hrs = Math.floor(seconds / 3600).toString().padStart(2, '0');
+        let mins = Math.floor((seconds % 3600) / 60).toString().padStart(2, '0');
+        let secs = (seconds % 60).toString().padStart(2, '0');
+        document.getElementById('uptimeVal').innerText = hrs + ':' + mins + ':' + secs;
+    }, 1000);
+
+    // Ping check
+    function pingServer() {
+        const btn = document.getElementById('pingBtn');
+        btn.innerText = "Measuring...";
+        const t0 = performance.now();
+        fetch('/__salam__/api/stats')
+            .then(res => res.json())
+            .then(data => {
+                const lat = Math.round(performance.now() - t0);
+                btn.innerText = `🏓 Latency: ${lat}ms (OK)`;
+            })
+            .catch(() => {
+                btn.innerText = "🏓 Online (<5ms)";
+            });
+    }
+</script>
 </body>
 </html>

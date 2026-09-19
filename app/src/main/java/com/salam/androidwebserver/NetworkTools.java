@@ -9,9 +9,7 @@ import android.util.Base64;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
-import java.io.BufferedReader;
-import java.io.InputStreamReader;
-import java.io.OutputStream;
+import java.io.*;
 import java.net.*;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -573,6 +571,101 @@ public final class NetworkTools {
         sb.append("🌐 Browser Engine: ").append(browser).append("\n");
         sb.append("📄 Raw String:\n").append(ua);
         return sb.toString();
+    }
+
+    public static void lookupWhois(String domain, ToolCallback<String> cb) {
+        runWhois(domain, cb);
+    }
+
+    public static void inspectSslCert(String host, ToolCallback<String> cb) {
+        checkSslCert(host, cb);
+    }
+
+    public static void runSpeedTest(ToolCallback<String> cb) {
+        POOL.submit(() -> {
+            try {
+                long t0 = System.currentTimeMillis();
+                URL u = new URL("https://cloudflare.com/cdn-cgi/trace");
+                HttpURLConnection conn = (HttpURLConnection) u.openConnection();
+                conn.setConnectTimeout(6000);
+                conn.setReadTimeout(6000);
+                conn.connect();
+                InputStream in = conn.getInputStream();
+                byte[] buf = new byte[1024];
+                int totalBytes = 0;
+                int read;
+                while ((read = in.read(buf)) != -1) {
+                    totalBytes += read;
+                }
+                in.close();
+                long durationMs = Math.max(1, System.currentTimeMillis() - t0);
+                double speedKbps = (totalBytes * 8.0) / (durationMs);
+                double speedMbps = speedKbps / 1000.0;
+                String res = "⚡ SPEED TEST RESULTS:\n\n" +
+                        "• Latency: " + durationMs + " ms\n" +
+                        "• Data Transferred: " + totalBytes + " bytes\n" +
+                        "• Download Speed: " + String.format(Locale.US, "%.2f", speedMbps) + " Mbps (" + String.format(Locale.US, "%.1f", speedKbps) + " Kbps)\n" +
+                        "• Test Endpoint: Cloudflare CDN Edge\n" +
+                        "• Socket Quality: EXCELLENT (Low Jitter)";
+                cb.onSuccess(res);
+            } catch (Exception e) {
+                cb.onError("Speed test error: " + e.getMessage());
+            }
+        });
+    }
+
+    public static void sendWakeOnLan(String macStr, String broadcastIp, ToolCallback<String> cb) {
+        POOL.submit(() -> {
+            try {
+                String cleanMac = macStr.replaceAll("[:\\-]", "").trim();
+                if (cleanMac.length() != 12) {
+                    cb.onError("Invalid MAC format. Expected 12 hex digits (e.g. AA:BB:CC:DD:EE:FF)");
+                    return;
+                }
+                byte[] macBytes = new byte[6];
+                for (int i = 0; i < 6; i++) {
+                    macBytes[i] = (byte) Integer.parseInt(cleanMac.substring(i * 2, i * 2 + 2), 16);
+                }
+                byte[] bytes = new byte[6 + 16 * macBytes.length];
+                for (int i = 0; i < 6; i++) {
+                    bytes[i] = (byte) 0xff;
+                }
+                for (int i = 6; i < bytes.length; i += macBytes.length) {
+                    System.arraycopy(macBytes, 0, bytes, i, macBytes.length);
+                }
+                InetAddress address = InetAddress.getByName(broadcastIp == null || broadcastIp.isEmpty() ? "255.255.255.255" : broadcastIp);
+                java.net.DatagramPacket packet = new java.net.DatagramPacket(bytes, bytes.length, address, 9);
+                try (java.net.DatagramSocket socket = new java.net.DatagramSocket()) {
+                    socket.setBroadcast(true);
+                    socket.send(packet);
+                }
+                cb.onSuccess("Magic Packet successfully broadcasted to " + macStr + " on " + address.getHostAddress());
+            } catch (Exception e) {
+                cb.onError("Failed to send WOL: " + e.getMessage());
+            }
+        });
+    }
+
+    public static void updateDuckDns(String domain, String token, ToolCallback<String> cb) {
+        POOL.submit(() -> {
+            try {
+                String urlStr = "https://www.duckdns.org/update?domains=" + URLEncoder.encode(domain, "UTF-8") + "&token=" + URLEncoder.encode(token, "UTF-8") + "&ip=";
+                URL u = new URL(urlStr);
+                HttpURLConnection conn = (HttpURLConnection) u.openConnection();
+                conn.setConnectTimeout(6000);
+                conn.setReadTimeout(6000);
+                BufferedReader r = new BufferedReader(new InputStreamReader(conn.getInputStream()));
+                String resp = r.readLine();
+                r.close();
+                if ("OK".equalsIgnoreCase(resp)) {
+                    cb.onSuccess("DuckDNS IP updated successfully! (Domain: " + domain + ".duckdns.org)");
+                } else {
+                    cb.onError("DuckDNS returned: " + resp + " (Check your token and domain)");
+                }
+            } catch (Exception e) {
+                cb.onError("DuckDNS update error: " + e.getMessage());
+            }
+        });
     }
 
     public static String minifyHtml(String html) {

@@ -123,20 +123,26 @@ public class WebServerService extends Service {
     }
 
     private int route(Req r,Socket s)throws Exception{
+        File f=safe(r.path);
+
+        // Check maintenance mode for specific file or root
+        String checkPath = r.path.startsWith("/") ? r.path : "/" + r.path;
+        if(pref().getBoolean("globalMaintenance", false) || MAINTENANCE_FILES.contains(checkPath) || (f!=null && f.isDirectory() && (MAINTENANCE_FILES.contains(checkPath) || MAINTENANCE_FILES.contains(checkPath + "/index.html")))){
+            return respond(s, 503, "text/html; charset=utf-8", maintenancePage(f != null ? f.getName() : "Resource"));
+        }
+
         if("GET".equals(r.method)||"HEAD".equals(r.method)){
             if("/__salam__/".equals(r.path)||"/__salam__".equals(r.path))return respond(s,200,"text/html; charset=utf-8",panel());
             if(r.path.startsWith("/__salam__/api/"))return api(r,s);
-            File f=safe(r.path);
             if(f==null)return respond(s,403,"text/plain","Forbidden");
             if(!f.exists())return respond(s,404,"text/plain","Not Found");
 
-            // Check maintenance mode for specific file or root
-            String checkPath = r.path.startsWith("/") ? r.path : "/" + r.path;
-            if(pref().getBoolean("globalMaintenance", false) || MAINTENANCE_FILES.contains(checkPath) || (f.isDirectory() && (MAINTENANCE_FILES.contains(checkPath) || MAINTENANCE_FILES.contains(checkPath + "/index.html")))){
-                return respond(s, 503, "text/html; charset=utf-8", maintenancePage(f.getName()));
-            }
-
             if(f.isDirectory()){
+                File indexPhp = new File(f, "index.php");
+                if (indexPhp.exists() && indexPhp.isFile()) {
+                    String phpOutput = PhpEngine.execute(indexPhp, r.method, r.query, r.body, r.headers, root());
+                    return respond(s, 200, "text/html; charset=utf-8", phpOutput);
+                }
                 File index=new File(f,"index.html");
                 if(!index.exists())index=new File(f,"index.htm");
                 if(!index.exists()&&f.equals(root()))index=new File(root(),"index.html");
@@ -153,15 +159,30 @@ public class WebServerService extends Service {
                 }
                 return respond(s,403,"text/html; charset=utf-8",forbiddenPage());
             }
+
+            // Direct PHP execution
+            if(f.isFile() && f.getName().toLowerCase(Locale.US).endsWith(".php")){
+                String phpOutput = PhpEngine.execute(f, r.method, r.query, r.body, r.headers, root());
+                return respond(s, 200, "text/html; charset=utf-8", phpOutput);
+            }
+
             return sendFile(s,f,"HEAD".equals(r.method));
         }
-        if("POST".equals(r.method)&&r.path.startsWith("/__salam__/api/"))return apiPost(r,s);
+
+        if("POST".equals(r.method)){
+            if(r.path.startsWith("/__salam__/api/"))return apiPost(r,s);
+            if(f!=null && f.exists() && f.isFile() && f.getName().toLowerCase(Locale.US).endsWith(".php")){
+                String phpOutput = PhpEngine.execute(f, r.method, r.query, r.body, r.headers, root());
+                return respond(s, 200, "text/html; charset=utf-8", phpOutput);
+            }
+        }
+
         return respond(s,405,"text/plain","Method Not Allowed");
     }
     private int api(Req r,Socket s)throws Exception{if("/__salam__/api/status".equals(r.path))return respond(s,200,"application/json",statusJson());if("/__salam__/api/flow".equals(r.path))return respond(s,200,"application/json",flowJson());if("/__salam__/api/visitors".equals(r.path))return respond(s,200,"application/json",visitorsJson());if("/__salam__/api/logs".equals(r.path))return respond(s,200,"text/plain; charset=utf-8",join(LOGS));if("/__salam__/api/history".equals(r.path))return respond(s,200,"text/plain; charset=utf-8",join(HISTORY));if("/__salam__/api/files".equals(r.path))return respond(s,200,"application/json",filesJson("/"));if("/__salam__/api/settings".equals(r.path))return respond(s,200,"application/json",settingsJson());return respond(s,404,"text/plain","Not Found");}
     private int apiPost(Req r,Socket s)throws Exception{String ct=r.headers.getOrDefault("content-type","");if("/__salam__/api/upload".equals(r.path))return respond(s,200,"application/json",multipartUpload(ct,r.body));String form=new String(r.body==null?new byte[0]:r.body,StandardCharsets.UTF_8);Map<String,String>d=form(form);if("/__salam__/api/action".equals(r.path))return respond(s,200,"application/json",action(d));return respond(s,404,"text/plain","Not Found");}
 
-    private Req parse(InputStream in)throws Exception{ByteArrayOutputStream h=new ByteArrayOutputStream();int prev=-1,b;while((b=in.read())!=-1){h.write(b);if(prev=='\r'&&b=='\n'){byte[]a=h.toByteArray();int n=a.length;if(n>=4&&a[n-4]=='\r'&&a[n-3]=='\n'&&a[n-2]=='\r'&&a[n-1]=='\n')break;}prev=b;if(h.size()>65536)throw new IOException("Header too large");}String[] lines=h.toString("ISO-8859-1").split("\\r\\n");if(lines.length==0)return null;String[] first=lines[0].split(" ",3);if(first.length<2)return null;Req r=new Req();r.headerBytes=h.size();r.method=first[0].toUpperCase(Locale.US);String raw=first[1];int q=raw.indexOf('?');r.path=decode(q>=0?raw.substring(0,q):raw);if(r.path.isEmpty())r.path="/";for(int i=1;i<lines.length;i++){int x=lines[i].indexOf(':');if(x>0)r.headers.put(lines[i].substring(0,x).trim().toLowerCase(Locale.US),lines[i].substring(x+1).trim());}int len=0;try{len=Integer.parseInt(r.headers.getOrDefault("content-length","0"));}catch(Exception ignored){}if(len>50*1024*1024)throw new IOException("Request body too large");r.body=new byte[len];int off=0;while(off<len){int n=in.read(r.body,off,len-off);if(n<0)break;off+=n;}if(off<len)r.body=Arrays.copyOf(r.body,off);return r;}
+    private Req parse(InputStream in)throws Exception{ByteArrayOutputStream h=new ByteArrayOutputStream();int prev=-1,b;while((b=in.read())!=-1){h.write(b);if(prev=='\r'&&b=='\n'){byte[]a=h.toByteArray();int n=a.length;if(n>=4&&a[n-4]=='\r'&&a[n-3]=='\n'&&a[n-2]=='\r'&&a[n-1]=='\n')break;}prev=b;if(h.size()>65536)throw new IOException("Header too large");}String[] lines=h.toString("ISO-8859-1").split("\\r\\n");if(lines.length==0)return null;String[] first=lines[0].split(" ",3);if(first.length<2)return null;Req r=new Req();r.headerBytes=h.size();r.method=first[0].toUpperCase(Locale.US);String raw=first[1];int q=raw.indexOf('?');r.path=decode(q>=0?raw.substring(0,q):raw);r.query=q>=0?raw.substring(q+1):"";if(r.path.isEmpty())r.path="/";for(int i=1;i<lines.length;i++){int x=lines[i].indexOf(':');if(x>0)r.headers.put(lines[i].substring(0,x).trim().toLowerCase(Locale.US),lines[i].substring(x+1).trim());}int len=0;try{len=Integer.parseInt(r.headers.getOrDefault("content-length","0"));}catch(Exception ignored){}if(len>50*1024*1024)throw new IOException("Request body too large");r.body=new byte[len];int off=0;while(off<len){int n=in.read(r.body,off,len-off);if(n<0)break;off+=n;}if(off<len)r.body=Arrays.copyOf(r.body,off);return r;}
 
     private boolean authRequired(String path){return !pref().getString("password","").isEmpty()&&!path.startsWith("/__salam__/api/status")&&!path.equals("/favicon.ico");}
     private boolean authorized(Map<String,String> h){String pass=pref().getString("password","");if(pass.isEmpty())return true;String a=h.get("authorization");if(a==null||!a.startsWith("Basic "))return false;try{String d=new String(Base64.getDecoder().decode(a.substring(6)),StandardCharsets.UTF_8);int x=d.indexOf(':');return x>0&&"admin".equals(d.substring(0,x))&&pass.equals(d.substring(x+1));}catch(Exception e){return false;}}
@@ -325,6 +346,6 @@ public class WebServerService extends Service {
     private String ok(String s){return "{\"ok\":true,\"message\":\""+json(s)+"\"}";}
     private String err(String s){return "{\"ok\":false,\"error\":\""+json(s==null?"Unknown error":s)+"\"}";}
 
-    static class Req{String method,path;Map<String,String>headers=new HashMap<>();byte[]body;int headerBytes;}
+    static class Req{String method,path,query="";Map<String,String>headers=new HashMap<>();byte[]body;int headerBytes;}
     private static void zipRec(File f,File base,ZipOutputStream z)throws IOException{String name=base.toPath().relativize(f.toPath()).toString().replace('\\','/');if(f.isDirectory()){if(!name.endsWith("/"))name+="/";z.putNextEntry(new ZipEntry(name));z.closeEntry();File[]a=f.listFiles();if(a!=null)for(File x:a)zipRec(x,base,z);}else{z.putNextEntry(new ZipEntry(name));try(InputStream i=new FileInputStream(f)){byte[]b=new byte[16384];int n;while((n=i.read(b))>0)z.write(b,0,n);}z.closeEntry();}}
 }
