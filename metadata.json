@@ -1,0 +1,6 @@
+{
+  "name": "Salam Web Server",
+  "description": "Android Web Server with file manager, live telemetry monitoring, IP security controls, and browser control center.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
