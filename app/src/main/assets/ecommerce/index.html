@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Salam Store | Premium E-Commerce</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+    <div class="header-container">
+        <div class="logo">
+            <span class="logo-icon">🛍️</span>
+            <div>
+                <h1>Salam Store</h1>
+                <small>Public Online Shop • Hosted on Android</small>
+            </div>
+        </div>
+        <div class="search-bar">
+            <input id="search-input" type="text" placeholder="Search laptops, phones, accessories..." oninput="filterProducts()">
+        </div>
+        <button class="cart-btn" onclick="toggleCart()">
+            🛒 <span class="cart-text">Cart</span>
+            <span id="cart-badge" class="badge">0</span>
+        </button>
+    </div>
+</header>
+
+<main>
+    <section class="hero-banner">
+        <div class="hero-content">
+            <span class="tag">⚡ LIVE PUBLIC SERVER SALE</span>
+            <h2>Next-Gen Tech & Gadgets Delivered Fast</h2>
+            <p>Direct from local merchant to your doorstep. Free delivery on orders over $50.</p>
+            <button class="cta-btn" onclick="scrollToProducts()">Browse Deals ↓</button>
+        </div>
+        <div class="hero-badge-box">
+            <div class="pill">🟢 Server: Online Worldwide</div>
+            <div class="pill">🔒 256-Bit SSL Encrypted</div>
+            <div class="pill">⚡ Instant Order Processing</div>
+        </div>
+    </section>
+
+    <section class="categories">
+        <button class="cat-pill active" onclick="setCategory('all', this)">All Items</button>
+        <button class="cat-pill" onclick="setCategory('phones', this)">📱 Phones</button>
+        <button class="cat-pill" onclick="setCategory('laptops', this)">💻 Laptops</button>
+        <button class="cat-pill" onclick="setCategory('audio', this)">🎧 Audio</button>
+        <button class="cat-pill" onclick="setCategory('wearables', this)">⌚ Watches</button>
+    </section>
+
+    <section id="products-section" class="products-grid">
+        <!-- Injected via JavaScript -->
+    </section>
+</main>
+
+<div id="cart-modal" class="modal-overlay" onclick="closeCart(event)">
+    <div class="modal-card">
+        <div class="modal-header">
+            <h3>🛍️ Your Shopping Cart</h3>
+            <button class="close-btn" onclick="toggleCart()">✕</button>
+        </div>
+        <div id="cart-items" class="cart-items-list">
+            <p class="empty-msg">Your shopping cart is empty.</p>
+        </div>
+        <div class="cart-footer">
+            <div class="total-row">
+                <span>Subtotal:</span>
+                <b id="cart-total">$0.00</b>
+            </div>
+            <button id="checkout-btn" class="checkout-btn" onclick="openCheckout()" disabled>Proceed to Checkout →</button>
+        </div>
+    </div>
+</div>
+
+<div id="checkout-modal" class="modal-overlay" onclick="closeCheckout(event)">
+    <div class="modal-card checkout-card">
+        <div class="modal-header">
+            <h3>📦 Order Checkout</h3>
+            <button class="close-btn" onclick="toggleCheckout()">✕</button>
+        </div>
+        <form id="checkout-form" onsubmit="submitOrder(event)">
+            <label>Full Name
+                <input required id="cust-name" type="text" placeholder="e.g. Abdus Salam">
+            </label>
+            <label>Phone Number
+                <input required id="cust-phone" type="tel" placeholder="e.g. +880 1700 000000">
+            </label>
+            <label>Delivery Address
+                <textarea required id="cust-address" rows="2" placeholder="Street, City, Postal Code"></textarea>
+            </label>
+            <label>Payment Method
+                <select id="cust-payment">
+                    <option value="cod">Cash on Delivery</option>
+                    <option value="bkash">bKash / Mobile Wallet</option>
+                    <option value="card">Credit / Debit Card</option>
+                </select>
+            </label>
+            <div class="order-summary-box">
+                <p>Order Total: <b id="checkout-total">$0.00</b></p>
+                <small>Order will be processed directly on the host server.</small>
+            </div>
+            <button type="submit" class="place-order-btn">Confirm & Place Order 🚀</button>
+        </form>
+    </div>
+</div>
+
+<div id="order-success-modal" class="modal-overlay">
+    <div class="modal-card success-card">
+        <span class="success-icon">🎉</span>
+        <h3>Order Placed Successfully!</h3>
+        <p id="success-msg">Thank you! Your order has been registered on the server.</p>
+        <button class="cta-btn" onclick="resetAfterOrder()">Continue Shopping</button>
+    </div>
+</div>
+
+<footer>
+    <p>⚡ Powered by <b>Salam Web Server</b> • Running live on Android device • Public Internet Ready</p>
+</footer>
+
+<script src="app.js"></script>
+</body>
+</html>

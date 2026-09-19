@@ -70,10 +70,22 @@ public class WebServerService extends Service {
     private Notification notification(){String text=running?"🟢 ONLINE • "+displayUrl():"Salam Web Server";Notification.Builder b=Build.VERSION.SDK_INT>=26?new Notification.Builder(this,"salam-server"):new Notification.Builder(this);Intent open=new Intent(this,MainActivity.class);PendingIntent pi=PendingIntent.getActivity(this,78,open,PendingIntent.FLAG_UPDATE_CURRENT|PendingIntent.FLAG_IMMUTABLE);Intent stop=new Intent(this,WebServerService.class).setAction("STOP");PendingIntent stopPi=PendingIntent.getService(this,79,stop,PendingIntent.FLAG_UPDATE_CURRENT|PendingIntent.FLAG_IMMUTABLE);return b.setContentTitle("Salam Web Server").setContentText(text).setSmallIcon(R.drawable.ic_server).setContentIntent(pi).setOngoing(true).setOnlyAlertOnce(true).setCategory(Notification.CATEGORY_SERVICE).addAction(new Notification.Action.Builder(null,"STOP SERVER",stopPi).build()).build();}
     private void notifyStatus(){try{getSystemService(NotificationManager.class).notify(77,notification());}catch(Exception ignored){}}
 
-    private void startServer(){synchronized(LOCK){if(running)return;load();int port=pref().getInt("port",8080);if(port<1024||port>65535)port=8080;try{server=new ServerSocket();server.setReuseAddress(true);server.bind(new InetSocketAddress("0.0.0.0",port),64);running=true;startedAt=System.currentTimeMillis();acquireKeepAlive();resetFlow();requests.set(0);clients.clear();RATE.clear();log("SERVER STARTED | "+displayUrl());startForeground(77,notification());pool.submit(this::acceptLoop);}catch(Exception e){running=false;log("START ERROR | "+e.getClass().getSimpleName()+" | "+e.getMessage());stopSelf();}}}
+    private void startServer(){synchronized(LOCK){if(running)return;load();int port=pref().getInt("port",8080);if(port<1024||port>65535)port=8080;try{server=new ServerSocket();server.setReuseAddress(true);server.bind(new InetSocketAddress("0.0.0.0",port),64);running=true;startedAt=System.currentTimeMillis();acquireKeepAlive();resetFlow();requests.set(0);clients.clear();RATE.clear();log("SERVER STARTED | "+displayUrl());startForeground(77,notification());pool.submit(this::acceptLoop);
+        if(pref().getBoolean("publicMode",true)){
+            final int p=port;
+            TunnelManager.getInstance().setListener(new TunnelManager.TunnelListener(){
+                @Override public void onTunnelStarting(String msg){log("TUNNEL | "+msg);notifyStatus();}
+                @Override public void onTunnelActive(String url,String provider){log("PUBLIC TUNNEL ONLINE | "+url+" ("+provider+")");notifyStatus();}
+                @Override public void onTunnelError(String error){log("TUNNEL ERROR | "+error);notifyStatus();}
+                @Override public void onTunnelStopped(){log("TUNNEL STOPPED");notifyStatus();}
+            });
+            String prov=pref().getString("tunnelProvider",TunnelManager.PROVIDER_LOCALHOST_RUN);
+            TunnelManager.getInstance().startTunnel(this,p,prov);
+        }
+    }catch(Exception e){running=false;log("START ERROR | "+e.getClass().getSimpleName()+" | "+e.getMessage());stopSelf();}}}
     private void acquireKeepAlive(){try{if(wakeLock==null){PowerManager pm=(PowerManager)getSystemService(POWER_SERVICE);wakeLock=pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK,"SalamWebServer:KeepAlive");wakeLock.setReferenceCounted(false);}if(!wakeLock.isHeld())wakeLock.acquire();}catch(Exception ignored){}}
     private void releaseKeepAlive(){try{if(wakeLock!=null&&wakeLock.isHeld())wakeLock.release();}catch(Exception ignored){}}
-    private void stopServer(){synchronized(LOCK){if(!running){releaseKeepAlive();return;}running=false;try{if(server!=null)server.close();}catch(Exception ignored){}server=null;clients.clear();RATE.clear();releaseKeepAlive();log("SERVER STOPPED");try{stopForeground(STOP_FOREGROUND_REMOVE);}catch(Exception ignored){}}}
+    private void stopServer(){synchronized(LOCK){if(!running){releaseKeepAlive();return;}running=false;try{TunnelManager.getInstance().stopTunnel();}catch(Exception ignored){}try{if(server!=null)server.close();}catch(Exception ignored){}server=null;clients.clear();RATE.clear();releaseKeepAlive();log("SERVER STOPPED");try{stopForeground(STOP_FOREGROUND_REMOVE);}catch(Exception ignored){}}}
     private void acceptLoop(){while(running){try{Socket s=server.accept();String ip=s.getInetAddress().getHostAddress();if(clients.size()>=maxClients){respond(s,503,"text/plain","Server busy");close(s);continue;}pool.submit(()->handle(s));}catch(Exception e){if(running)log("ACCEPT ERROR | "+e.getMessage());}}}
 
     private boolean isLocalIp(String ip){return "127.0.0.1".equals(ip)||"::1".equals(ip)||"localhost".equalsIgnoreCase(ip);}
@@ -180,7 +192,39 @@ public class WebServerService extends Service {
     private String join(List<String> a){StringBuilder b=new StringBuilder();for(String x:a)b.append(x).append('\n');return b.toString();}
     private String now(){return new SimpleDateFormat("yyyy-MM-dd HH:mm:ss",Locale.US).format(new Date());}
     private String uptime(){if(!running)return "00:00:00";long s=(System.currentTimeMillis()-startedAt)/1000;return String.format(Locale.US,"%02d:%02d:%02d",s/3600,(s%3600)/60,s%60);}
-    private String displayUrl(){String u=pref().getString("customUrl","").trim();return u.isEmpty()?currentUrl(this):u;}
+    private String displayUrl(){
+        if(pref().getBoolean("publicMode",true)&&TunnelManager.getInstance().isTunnelRunning()){
+            String pub=TunnelManager.getInstance().getActivePublicUrl();
+            if(pub!=null&&!pub.isEmpty())return pub;
+        }
+        String u=pref().getString("customUrl","").trim();
+        return u.isEmpty()?currentUrl(this):u;
+    }
+    public static String activeUrl(Context c){
+        SharedPreferences p=c.getSharedPreferences("server",Context.MODE_PRIVATE);
+        if(p.getBoolean("publicMode",true)&&TunnelManager.getInstance().isTunnelRunning()){
+            String pub=TunnelManager.getInstance().getActivePublicUrl();
+            if(pub!=null&&!pub.isEmpty())return pub;
+        }
+        String u=p.getString("customUrl","").trim();
+        return u.isEmpty()?currentUrl(c):u;
+    }
+    public static void deployTemplate(Context c,String templateName)throws IOException{
+        File f=new File(c.getFilesDir(),"www");
+        if(!f.exists())f.mkdirs();
+        String assetDir="ecommerce".equals(templateName)?"ecommerce":"web";
+        String[] list=c.getAssets().list(assetDir);
+        if(list!=null&&list.length>0){
+            for(String file:list){
+                try(InputStream in=c.getAssets().open(assetDir+"/"+file);
+                    FileOutputStream out=new FileOutputStream(new File(f,file))){
+                    byte[]b=new byte[8192];
+                    int n;
+                    while((n=in.read(b))>0)out.write(b,0,n);
+                }
+            }
+        }
+    }
     public static String currentUrl(Context c){int p=c.getSharedPreferences("server",Context.MODE_PRIVATE).getInt("port",8080);return "http://"+localIp(c)+":"+p;}
     public static String localIp(Context c){try{ConnectivityManager m=(ConnectivityManager)c.getSystemService(Context.CONNECTIVITY_SERVICE);Network active=m.getActiveNetwork();if(active!=null){LinkProperties lp=m.getLinkProperties(active);if(lp!=null)for(LinkAddress a:lp.getLinkAddresses()){String x=a.getAddress().getHostAddress();if(x!=null&&!x.contains(":" )&&!x.startsWith("127."))return x;}}for(Network n:m.getAllNetworks()){LinkProperties lp=m.getLinkProperties(n);if(lp!=null)for(LinkAddress a:lp.getLinkAddresses()){String x=a.getAddress().getHostAddress();if(x!=null&&!x.contains(":" )&&!x.startsWith("127."))return x;}}}catch(Exception ignored){}return "0.0.0.0";}
     public static String wifiIp(Context c){return interfaceIp(c,"wlan");}
