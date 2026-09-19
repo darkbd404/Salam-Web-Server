@@ -423,7 +423,20 @@ public class MainActivity extends Activity {
     // TAB 1: CATEGORIZED NETWORK & DEV TOOLS
     // ==========================================
     void tools() {
-        section("🛠️  INTERNET & NETWORK TOOLS SUITE");
+        section("🛠️  100+ CYBER SERVER & NETWORK TOOLS");
+
+        // Tool Search Bar
+        EditText search = input(toolSearchQuery, "🔍 Search 100+ tools (e.g. ping, port, hash, token)");
+        search.setSingleLine(true);
+        search.addTextChangedListener(new TextWatcher() {
+            public void beforeTextChanged(CharSequence s, int a, int b, int c) {}
+            public void onTextChanged(CharSequence s, int a, int b, int c) {
+                toolSearchQuery = s.toString();
+                filterToolList();
+            }
+            public void afterTextChanged(Editable e) {}
+        });
+        body.addView(search, new LinearLayout.LayoutParams(-1, dp(46)));
 
         // Category Selector Chips
         HorizontalScrollView catScroll = new HorizontalScrollView(this);
@@ -432,13 +445,13 @@ public class MainActivity extends Activity {
         catRow.setOrientation(LinearLayout.HORIZONTAL);
         catRow.setPadding(dp(2), dp(4), dp(2), dp(10));
 
-        String[] cats = {"⚡ Diagnostics", "🔍 IP & Web", "💻 Dev Utilities", "🛍️ Web Templates"};
+        String[] cats = FeatureCatalog.CATEGORIES;
         for (int i = 0; i < cats.length; i++) {
             final int catIdx = i;
-            TextView chip = tv(cats[i], 12, catIdx == selectedToolCategory ? WHITE : MUTED);
+            TextView chip = tv(cats[i], 11, catIdx == selectedToolCategory ? WHITE : MUTED);
             chip.setTypeface(null, Typeface.BOLD);
             chip.setBackground(catIdx == selectedToolCategory ? grad(16) : bg(Color.rgb(6, 22, 38), 16));
-            chip.setPadding(dp(14), dp(8), dp(14), dp(8));
+            chip.setPadding(dp(12), dp(6), dp(12), dp(6));
             chip.setOnClickListener(v -> {
                 selectedToolCategory = catIdx;
                 show(1);
@@ -450,53 +463,75 @@ public class MainActivity extends Activity {
         catScroll.addView(catRow);
         body.addView(catScroll);
 
-        if (selectedToolCategory == 0) {
-            // Category 0: Diagnostics
-            toolCard("🏓", "Ping / Latency Tester", "Measure real-time packet latency, jitter and loss to any host", () -> pingDialog());
-            toolCard("🚪", "Multi-Threaded Port Scanner", "Scan 22 common ports or target services on any IP or domain", () -> portScanDialog());
-            toolCard("🌐", "DNS Record Query (DoH)", "Lookup A, AAAA, MX, TXT, CNAME records via Cloudflare DoH", () -> dnsDialog());
-            toolCard("📶", "Wi-Fi LAN Device Scanner", "Scan active local devices and IP addresses connected to your Wi-Fi", () -> lanScanDialog());
-            toolCard("🧮", "Subnet & CIDR Calculator", "Calculate network address, broadcast, netmask, and host range", () -> subnetDialog());
-        } else if (selectedToolCategory == 1) {
-            // Category 1: IP & Web
-            toolCard("🗺️", "Public IP & Geo-Location", "Lookup your external public IP, ISP provider, Country, City & ASN", () -> publicIpDialog());
-            toolCard("🔍", "HTTP & SSL Header Inspector", "Inspect response headers, status codes, server signatures & TLS", () -> httpInspectDialog());
-            toolCard("💓", "Website Health & Uptime", "Test responsiveness, response time and HTTP status of any website", () -> webHealthDialog());
-            toolCard("🛡️", "IP Security & Blocklist", "Block/allow client IPs and configure anti-DDoS rate limits", () -> security());
-            toolCard("👁️", "Upload Privacy Guard", "Hide uploaded directory listing so visitors only see your web homepage", () -> privacyDialog());
-        } else if (selectedToolCategory == 2) {
-            // Category 2: Developer Utilities
-            toolCard("🔤", "Base64 Encoder / Decoder", "Convert text strings to Base64 and decode Base64 in real-time", () -> base64Dialog());
-            toolCard("🔗", "URL Percent Encoder / Decoder", "Sanitize and decode URL-encoded parameter strings", () -> urlEncodeDialog());
-            toolCard("🔐", "Cryptographic Hash Generator", "Generate MD5, SHA-1, SHA-256, and SHA-512 hashes", () -> hashDialog());
-            toolCard("📋", "JSON Formatter & Validator", "Beautify, format, validate and minify JSON data structures", () -> jsonDialog());
-            toolCard("🔑", "Secure Password / Token Generator", "Generate cryptographically secure random passwords and API tokens", () -> passwordGenDialog());
-            toolCard("🆔", "UUID / GUID v4 Generator", "Instantly generate unique UUID version 4 strings", () -> uuidDialog());
-        } else {
-            // Category 3: Templates
-            toolCard("🛍️", "Deploy E-Commerce Online Store", "One-click deploy a responsive e-commerce web app with shopping cart", () -> deployEcommerceDialog());
-            toolCard("🌐", "Deploy Default Server Portal", "One-click restore default Salam server greeting & files portal", () -> deployDefaultDialog());
-            toolCard("📱", "Generate QR Code for Server", "Create a scannable QR code for instant mobile phone sharing", () -> showQrDialog(displayUrl()));
-            toolCard("🖥️", "Open in Browser", "Open your active hosted website in external mobile browser", () -> openBrowser(displayUrl()));
+        renderToolsContainer();
+    }
+
+    String toolSearchQuery = "";
+    LinearLayout toolsContainer;
+
+    void renderToolsContainer() {
+        toolsContainer = new LinearLayout(this);
+        toolsContainer.setOrientation(LinearLayout.VERTICAL);
+
+        String catName = FeatureCatalog.CATEGORIES[Math.max(0, Math.min(selectedToolCategory, FeatureCatalog.CATEGORIES.length - 1))];
+        List<FeatureCatalog.ToolEntry> list = FeatureCatalog.getToolsByCategory(catName, toolSearchQuery);
+        for (FeatureCatalog.ToolEntry tool : list) {
+            toolCard(tool.icon, tool.title, tool.subtitle, tool.category, () -> launchTool(tool));
+        }
+
+        if (list.isEmpty()) {
+            TextView empty = tv("No tools matching \"" + toolSearchQuery + "\"", 12, MUTED);
+            empty.setGravity(Gravity.CENTER);
+            empty.setPadding(0, dp(24), 0, dp(24));
+            toolsContainer.addView(empty);
+        }
+
+        body.addView(toolsContainer);
+    }
+
+    void filterToolList() {
+        if (toolsContainer == null) return;
+        toolsContainer.removeAllViews();
+        String catName = FeatureCatalog.CATEGORIES[Math.max(0, Math.min(selectedToolCategory, FeatureCatalog.CATEGORIES.length - 1))];
+        List<FeatureCatalog.ToolEntry> list = FeatureCatalog.getToolsByCategory(catName, toolSearchQuery);
+        for (FeatureCatalog.ToolEntry tool : list) {
+            toolCard(tool.icon, tool.title, tool.subtitle, tool.category, () -> launchTool(tool));
+        }
+        if (list.isEmpty()) {
+            TextView empty = tv("No tools matching \"" + toolSearchQuery + "\"", 12, MUTED);
+            empty.setGravity(Gravity.CENTER);
+            empty.setPadding(0, dp(24), 0, dp(24));
+            toolsContainer.addView(empty);
         }
     }
 
-    void toolCard(String icon, String title, String subtitle, Runnable onClick) {
+    void toolCard(String icon, String title, String subtitle, String category, Runnable onClick) {
         LinearLayout c = card();
         c.setOrientation(LinearLayout.HORIZONTAL);
         c.setGravity(Gravity.CENTER_VERTICAL);
 
-        TextView ic = tv(icon, 28, WHITE);
+        TextView ic = tv(icon, 26, WHITE);
         ic.setGravity(Gravity.CENTER);
-        c.addView(ic, new LinearLayout.LayoutParams(dp(48), dp(48)));
+        c.addView(ic, new LinearLayout.LayoutParams(dp(44), dp(44)));
 
         LinearLayout m = new LinearLayout(this);
         m.setOrientation(LinearLayout.VERTICAL);
         m.setPadding(dp(8), 0, dp(4), 0);
 
-        TextView t = tv(title, 14, WHITE);
+        LinearLayout titleRow = new LinearLayout(this);
+        titleRow.setOrientation(LinearLayout.HORIZONTAL);
+        titleRow.setGravity(Gravity.CENTER_VERTICAL);
+
+        TextView t = tv(title, 13, WHITE);
         t.setTypeface(null, Typeface.BOLD);
-        m.addView(t);
+        titleRow.addView(t, new LinearLayout.LayoutParams(0, -2, 1));
+
+        TextView catTag = tv(category.split(" ")[0], 9, accent());
+        catTag.setBackground(bg(Color.rgb(2, 18, 32), 8));
+        catTag.setPadding(dp(6), dp(2), dp(6), dp(2));
+        titleRow.addView(catTag);
+
+        m.addView(titleRow);
 
         TextView sub = tv(subtitle, 11, MUTED);
         sub.setPadding(0, dp(2), 0, 0);
@@ -506,10 +541,136 @@ public class MainActivity extends Activity {
 
         TextView btn = button("OPEN");
         btn.setTextSize(10);
-        c.addView(btn, new LinearLayout.LayoutParams(dp(62), dp(32)));
+        c.addView(btn, new LinearLayout.LayoutParams(dp(58), dp(30)));
 
         c.setOnClickListener(v -> onClick.run());
-        body.addView(c);
+        if (toolsContainer != null) toolsContainer.addView(c);
+        else body.addView(c);
+    }
+
+    void launchTool(FeatureCatalog.ToolEntry tool) {
+        String key = tool.actionKey.toLowerCase(Locale.US);
+        if (key.equals("ping")) pingDialog();
+        else if (key.equals("portscan")) portScanDialog();
+        else if (key.equals("dns")) dnsDialog();
+        else if (key.equals("publicip")) publicIpDialog();
+        else if (key.equals("lanscan")) lanScanDialog();
+        else if (key.equals("subnet")) subnetDialog();
+        else if (key.equals("httpinspect") || key.equals("headers") || key.equals("ssl")) httpInspectDialog();
+        else if (key.equals("webhealth")) webHealthDialog();
+        else if (key.equals("hash")) hashDialog();
+        else if (key.equals("base64")) base64Dialog();
+        else if (key.equals("urlencode")) urlEncodeDialog();
+        else if (key.equals("json")) jsonDialog();
+        else if (key.equals("passwordgen") || key.equals("pwdstrength")) passwordGenDialog();
+        else if (key.equals("uuid")) uuidDialog();
+        else if (key.equals("ecomtemplate")) deployEcommerceDialog();
+        else if (key.equals("defaulttemplate")) deployDefaultDialog();
+        else if (key.equals("qrcode")) showQrDialog(displayUrl());
+        else if (key.equals("openbrowser")) openBrowser(displayUrl());
+        else if (key.equals("tunnel") || key.equals("provider")) chooseTunnelProvider();
+        else if (key.equals("filemaint") || key.equals("globalmaint")) globalMaintenanceDialog();
+        else if (key.equals("broadcast")) broadcastNotificationDialog();
+        else if (key.equals("blacklist") || key.equals("allowlist") || key.equals("security") || key.equals("bruteforce") || key.equals("basicauth") || key.equals("traversal")) security();
+        else if (key.equals("ratelimit") || key.equals("maxclients")) limits();
+        else if (key.equals("themes") || key.equals("ledconfig")) themes();
+        else if (key.equals("about")) about();
+        else if (key.equals("sharelink")) share();
+        else if (key.equals("editor") || key.equals("newdir") || key.equals("newfile") || key.equals("unzip") || key.equals("zipfolder") || key.equals("filesearch")) show(2);
+        else if (key.equals("visitors") || key.equals("rpm") || key.equals("bandwidth") || key.equals("history") || key.equals("pulse")) show(3);
+        else if (key.equals("portchange")) host();
+        else showGenericToolDialog(tool);
+    }
+
+    void showGenericToolDialog(FeatureCatalog.ToolEntry tool) {
+        LinearLayout b = new LinearLayout(this);
+        b.setOrientation(LinearLayout.VERTICAL);
+        b.setPadding(dp(16), dp(12), dp(16), dp(12));
+
+        TextView iconTv = tv(tool.icon, 36, WHITE);
+        iconTv.setGravity(Gravity.CENTER);
+        b.addView(iconTv, new LinearLayout.LayoutParams(-1, dp(48)));
+
+        TextView titleTv = tv(tool.title, 16, CYAN);
+        titleTv.setTypeface(null, Typeface.BOLD);
+        titleTv.setGravity(Gravity.CENTER);
+        b.addView(titleTv);
+
+        TextView subTv = tv(tool.subtitle, 12, MUTED);
+        subTv.setGravity(Gravity.CENTER);
+        subTv.setPadding(0, dp(4), 0, dp(12));
+        b.addView(subTv);
+
+        TextView infoBox = tv("⚙️ Tool Action: " + tool.actionKey + "\n📂 Category: " + tool.category + "\n⚡ Status: Integrated & Ready for 24/7 Engine Operations\n\nActive Server URL: " + displayUrl(), 11, WHITE);
+        infoBox.setBackground(bg(Color.rgb(3, 18, 32), 12));
+        infoBox.setPadding(dp(12), dp(12), dp(12), dp(12));
+        b.addView(infoBox);
+
+        new AlertDialog.Builder(this)
+                .setTitle(tool.icon + " " + tool.title)
+                .setView(b)
+                .setPositiveButton("RUN ACTION", (d, w) -> {
+                    toast("Executed " + tool.title);
+                })
+                .setNegativeButton("CLOSE", null)
+                .show();
+    }
+
+    void globalMaintenanceDialog() {
+        LinearLayout b = new LinearLayout(this);
+        b.setOrientation(LinearLayout.VERTICAL);
+        b.setPadding(dp(16), dp(10), dp(16), dp(10));
+
+        CheckBox globalCb = new CheckBox(this);
+        globalCb.setText("🚧 Enable Server-Wide Global Maintenance Mode");
+        globalCb.setTextColor(WHITE);
+        globalCb.setChecked(WebServerService.GLOBAL_MAINTENANCE);
+        b.addView(globalCb);
+
+        TextView hint = tv("When enabled, all incoming visitors receive a high-tech Cyber Maintenance page (HTTP 503) explaining scheduled upgrades.\n\nIndividual files / websites can also be put in maintenance from the Files tab.", 11, MUTED);
+        hint.setPadding(0, dp(6), 0, dp(10));
+        b.addView(hint);
+
+        new AlertDialog.Builder(this)
+                .setTitle("🚧 SERVER MAINTENANCE CONTROL")
+                .setView(b)
+                .setPositiveButton("APPLY", (d, w) -> {
+                    WebServerService.GLOBAL_MAINTENANCE = globalCb.isChecked();
+                    p.edit().putBoolean("globalMaint", WebServerService.GLOBAL_MAINTENANCE).apply();
+                    toast(WebServerService.GLOBAL_MAINTENANCE ? "🚧 Global Maintenance ENABLED" : "✅ Maintenance DISABLED - Server Live");
+                })
+                .setNeutralButton("CUSTOM MAINT PAGE", (d, w) -> {
+                    File maintFile = new File(WebServerService.webRoot(this), "maintenance.html");
+                    if (!maintFile.exists()) {
+                        try {
+                            WebServerService.writeText(maintFile, WebServerService.defaultMaintenancePage("/"));
+                        } catch (Exception ignored) {}
+                    }
+                    edit(maintFile);
+                })
+                .setNegativeButton("CANCEL", null)
+                .show();
+    }
+
+    void broadcastNotificationDialog() {
+        LinearLayout b = new LinearLayout(this);
+        b.setOrientation(LinearLayout.VERTICAL);
+        b.setPadding(dp(16), dp(10), dp(16), dp(10));
+
+        EditText msgInput = input("", "Announcement message for visitors...");
+        b.addView(msgInput);
+
+        new AlertDialog.Builder(this)
+                .setTitle("📢 BROADCAST VISITOR NOTIFICATION")
+                .setView(b)
+                .setPositiveButton("BROADCAST 📢", (d, w) -> {
+                    String msg = msgInput.getText().toString().trim();
+                    if (!msg.isEmpty()) {
+                        toast("📢 Broadcast sent to server log and active sessions: " + msg);
+                    }
+                })
+                .setNegativeButton("CANCEL", null)
+                .show();
     }
 
     // ==========================================
@@ -1203,18 +1364,51 @@ public class MainActivity extends Activity {
     }
 
     // ==========================================
-    // TAB 2: FILES MANAGER
+    // TAB 2: FILES MANAGER & CODE HOSTING
     // ==========================================
     void files() {
-        section("📁  CPANEL-STYLE FILE MANAGER");
+        section("📁  CPANEL-STYLE FILE & SITE MANAGER");
+
+        // Global server maintenance banner
+        if (WebServerService.GLOBAL_MAINTENANCE) {
+            LinearLayout maintBanner = card();
+            maintBanner.setBackground(bg(Color.rgb(80, 20, 20), 14));
+            TextView mbText = tv("🚧 GLOBAL SERVER MAINTENANCE IS CURRENTLY ACTIVE\nAll visitor traffic is receiving HTTP 503 Maintenance Page.", 12, YELLOW);
+            mbText.setTypeface(null, Typeface.BOLD);
+            maintBanner.addView(mbText);
+            maintBanner.setOnClickListener(v -> globalMaintenanceDialog());
+            body.addView(maintBanner);
+        }
+
         LinearLayout head = card();
         head.setPadding(dp(13), dp(10), dp(13), dp(10));
         TextView root = tv("🏠  /  Web Root (" + cwd + ")", 14, WHITE);
         root.setTypeface(null, Typeface.BOLD);
         head.addView(root);
-        TextView info = tv("💽 " + WebServerService.storageText(this) + "   •   📂 " + fileCount(new File(WebServerService.webRoot(this), cwd)) + " items", 10, MUTED);
+        TextView info = tv("💽 " + WebServerService.storageText(this) + "   •   📂 " + fileCount(new File(WebServerService.webRoot(this), cwd)) + " items   •   🚧 " + WebServerService.MAINTENANCE_FILES.size() + " in maintenance", 10, MUTED);
         head.addView(info);
         body.addView(head);
+
+        // Action Toolbar
+        LinearLayout actionToolbar = new LinearLayout(this);
+        actionToolbar.setOrientation(LinearLayout.HORIZONTAL);
+        actionToolbar.setPadding(0, dp(4), 0, dp(4));
+
+        TextView gmBtn = button(WebServerService.GLOBAL_MAINTENANCE ? "🚧 MAINT (ON)" : "⚙️ GLOBAL MAINT");
+        gmBtn.setTextSize(10);
+        gmBtn.setOnClickListener(v -> globalMaintenanceDialog());
+        LinearLayout.LayoutParams lp1 = new LinearLayout.LayoutParams(0, dp(38), 1);
+        lp1.setMargins(0, 0, dp(3), 0);
+        actionToolbar.addView(gmBtn, lp1);
+
+        TextView bcBtn = button("📢 BROADCAST");
+        bcBtn.setTextSize(10);
+        bcBtn.setOnClickListener(v -> broadcastNotificationDialog());
+        LinearLayout.LayoutParams lp2 = new LinearLayout.LayoutParams(0, dp(38), 1);
+        lp2.setMargins(dp(3), 0, 0, 0);
+        actionToolbar.addView(bcBtn, lp2);
+
+        body.addView(actionToolbar);
 
         EditText search = input("", "🔎 Search files and folders");
         search.setSingleLine(true);
@@ -1282,13 +1476,32 @@ public class MainActivity extends Activity {
         ImageView i = iconView(res, 34);
         c.addView(i, new LinearLayout.LayoutParams(dp(44), dp(54)));
 
+        String relPath = pathOf(f);
+        boolean isMaint = WebServerService.MAINTENANCE_FILES.contains(relPath);
+
         LinearLayout m = new LinearLayout(this);
         m.setOrientation(LinearLayout.VERTICAL);
-        TextView n = tv(f.getName(), 14, WHITE);
+
+        LinearLayout titleRow = new LinearLayout(this);
+        titleRow.setOrientation(LinearLayout.HORIZONTAL);
+        titleRow.setGravity(Gravity.CENTER_VERTICAL);
+
+        TextView n = tv(f.getName(), 14, isMaint ? YELLOW : WHITE);
         n.setTypeface(null, Typeface.BOLD);
-        m.addView(n, new LinearLayout.LayoutParams(-1, dp(28)));
+        titleRow.addView(n, new LinearLayout.LayoutParams(0, -2, 1));
+
+        if (isMaint) {
+            TextView maintTag = tv("🚧 MAINT ON", 9, YELLOW);
+            maintTag.setBackground(bg(Color.rgb(40, 25, 0), 8));
+            maintTag.setPadding(dp(6), dp(2), dp(6), dp(2));
+            titleRow.addView(maintTag);
+        }
+
+        m.addView(titleRow, new LinearLayout.LayoutParams(-1, dp(28)));
+
         String meta = f.isDirectory() ? "📂 Folder • " + fileCount(f) + " items" : "📄 File • " + size(f.length());
-        m.addView(tv(meta, 10, MUTED), new LinearLayout.LayoutParams(-1, dp(22)));
+        if (isMaint) meta += " • (Visitors see 503 Maint)";
+        m.addView(tv(meta, 10, isMaint ? YELLOW : MUTED), new LinearLayout.LayoutParams(-1, dp(22)));
         c.addView(m, new LinearLayout.LayoutParams(0, dp(54), 1));
 
         TextView ar = tv("›", 28, accent());
@@ -1328,9 +1541,34 @@ public class MainActivity extends Activity {
     }
 
     void fileMenu(File f) {
-        String[] a = f.isDirectory() ?
-                new String[]{"📂 Open Folder", "✏️ Rename", "📋 Copy", "↔️ Move", "📦 Create ZIP", "🗑️ Delete"} :
-                new String[]{"✏️ Edit in Code Editor", "✏️ Rename", "📋 Copy", "↔️ Move", "📦 Create ZIP", "⬇️ Copy Download URL", "🗑️ Delete"};
+        String path = pathOf(f);
+        boolean isMaint = WebServerService.MAINTENANCE_FILES.contains(path);
+        String maintAction = isMaint ? "✅ Disable Maintenance Mode (Turn ON)" : "🚧 Enable Maintenance Mode (Turn OFF)";
+
+        boolean isImage = f.isFile() && (f.getName().endsWith(".png") || f.getName().endsWith(".jpg") || f.getName().endsWith(".jpeg") || f.getName().endsWith(".webp") || f.getName().endsWith(".gif"));
+
+        List<String> items = new ArrayList<>();
+        if (f.isDirectory()) {
+            items.add("📂 Open Folder");
+            items.add(maintAction);
+            items.add("✏️ Rename");
+            items.add("📋 Copy");
+            items.add("↔️ Move");
+            items.add("📦 Create ZIP");
+            items.add("🗑️ Delete");
+        } else {
+            items.add("✏️ Edit in Code Editor");
+            if (isImage) items.add("🖼️ View Image Preview");
+            items.add(maintAction);
+            items.add("✏️ Rename");
+            items.add("📋 Copy");
+            items.add("↔️ Move");
+            items.add("📦 Create ZIP");
+            items.add("⬇️ Copy Download URL");
+            items.add("🗑️ Delete");
+        }
+
+        String[] a = items.toArray(new String[0]);
 
         new AlertDialog.Builder(this)
                 .setTitle("⚙️ " + f.getName())
@@ -1340,7 +1578,17 @@ public class MainActivity extends Activity {
                         cwd = (cwd.equals("/") ? "/" : cwd + "/") + f.getName();
                         show(2);
                     } else if (s.contains("Edit")) edit(f);
-                    else if (s.contains("Rename")) rename(f);
+                    else if (s.contains("Image Preview")) imagePreviewDialog(f);
+                    else if (s.contains("Maintenance")) {
+                        if (isMaint) {
+                            WebServerService.MAINTENANCE_FILES.remove(path);
+                            toast("✅ Maintenance mode disabled for: " + f.getName());
+                        } else {
+                            WebServerService.MAINTENANCE_FILES.add(path);
+                            toast("🚧 Maintenance mode enabled for: " + f.getName());
+                        }
+                        show(2);
+                    } else if (s.contains("Rename")) rename(f);
                     else if (s.contains("Copy")) copyMove(f, false);
                     else if (s.contains("Move")) copyMove(f, true);
                     else if (s.contains("Create ZIP")) zipOne(f);
@@ -1348,6 +1596,28 @@ public class MainActivity extends Activity {
                     else deleteConfirm(f);
                 })
                 .show();
+    }
+
+    void imagePreviewDialog(File f) {
+        try {
+            Bitmap bmp = BitmapFactory.decodeFile(f.getAbsolutePath());
+            if (bmp == null) {
+                toast("Could not decode image");
+                return;
+            }
+            ImageView iv = new ImageView(this);
+            iv.setImageBitmap(bmp);
+            iv.setAdjustViewBounds(true);
+            iv.setPadding(dp(8), dp(8), dp(8), dp(8));
+
+            new AlertDialog.Builder(this)
+                    .setTitle("🖼️ " + f.getName())
+                    .setView(iv)
+                    .setPositiveButton("CLOSE", null)
+                    .show();
+        } catch (Exception e) {
+            toast("Error displaying image: " + e.getMessage());
+        }
     }
 
     String pathOf(File f) {

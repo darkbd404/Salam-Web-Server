@@ -20,6 +20,7 @@ public class WebServerService extends Service {
     public static final CopyOnWriteArrayList<String> LOGS=new CopyOnWriteArrayList<>();
     public static final CopyOnWriteArrayList<String> HISTORY=new CopyOnWriteArrayList<>();
     public static final Set<String> MAINTENANCE_FILES = ConcurrentHashMap.newKeySet();
+    public static volatile boolean GLOBAL_MAINTENANCE = false;
     public static volatile int maxClients=32, rateLimit=120;
     public static volatile String customHost="";
     private static final ConcurrentHashMap<String,Long> RATE=new ConcurrentHashMap<>();
@@ -187,9 +188,6 @@ public class WebServerService extends Service {
     private String settingsJson(){return "{\"port\":"+pref().getInt("port",8080)+",\"password\":"+(!pref().getString("password","").isEmpty())+",\"allowOnly\":"+pref().getBoolean("allowOnly",false)+",\"allowIps\":\""+json(pref().getString("allowIps",""))+"\",\"blockIps\":\""+json(pref().getString("blockIps",""))+"\",\"rate\":"+pref().getInt("rate",120)+",\"maxClients\":"+pref().getInt("maxClients",32)+",\"customUrl\":\""+json(pref().getString("customUrl",""))+"\"}";}
     private String filesJson(String path){File d=safe(path);if(d==null||!d.isDirectory())return "[]";File[]fs=d.listFiles();StringBuilder b=new StringBuilder("[");if(fs!=null)for(int i=0;i<fs.length;i++){if(i>0)b.append(',');File f=fs[i];String rPath=rel(f);boolean isMaint=MAINTENANCE_FILES.contains(rPath);b.append("{\"name\":\"").append(json(f.getName())).append("\",\"dir\":").append(f.isDirectory()).append(",\"size\":").append(f.length()).append(",\"path\":\"").append(json(rPath)).append("\",\"maintenance\":").append(isMaint).append("}");}return b.append(']').toString();}
     private String rel(File f){return "/"+root().toURI().relativize(f.toURI()).getPath().replace('\\','/');}
-    private String maintenancePage(String resourceName){
-        return "<!doctype html><html><head><meta name='viewport' content='width=device-width,initial-scale=1'><title>Under Maintenance</title><style>body{margin:0;padding:60px 20px;background:#06101f;color:#fff;font-family:system-ui,sans-serif;text-align:center}h1{color:#ffd52f;font-size:32px;margin-bottom:8px}.badge{display:inline-block;padding:6px 14px;background:#322703;color:#ffe600;border:1px solid #7c6000;border-radius:20px;font-size:13px;font-weight:bold;margin-bottom:20px}p{color:#9ec2e6;font-size:16px;max-width:520px;margin:12px auto;line-height:1.6}.card{background:#0a1e36;border:1px solid #163f6a;border-radius:20px;padding:26px;max-width:440px;margin:30px auto;box-shadow:0 10px 30px #000a}a{display:inline-block;margin-top:18px;padding:12px 24px;background:#13d8ff;color:#031427;text-decoration:none;border-radius:12px;font-weight:900}</style></head><body><div class='card'><h1>🚧 Maintenance</h1><div class='badge'>Temporarily Offline</div><p><b>"+html(resourceName)+"</b> is currently undergoing scheduled maintenance or updates by the server admin.</p><p>Please check back shortly!</p><a href='javascript:location.reload()'>↻ Refresh Page</a></div></body></html>";
-    }
     private String visitorsJson(){
         long now=System.currentTimeMillis();
         StringBuilder b=new StringBuilder("{\"totalVisitors\":").append(VISITOR_LAST_SEEN.size()).append(",\"visitors\":[");
@@ -206,6 +204,16 @@ public class WebServerService extends Service {
     }
     private String forbiddenPage(){
         return "<!doctype html><html><head><meta name='viewport' content='width=device-width,initial-scale=1'><title>403 Forbidden</title><style>body{margin:0;padding:50px 20px;background:#030b17;color:#fff;font-family:system-ui,sans-serif;text-align:center}h1{color:#ff3658;font-size:26px}p{color:#8eabc9;font-size:15px;max-width:520px;margin:12px auto;line-height:1.6}a{display:inline-block;margin-top:16px;padding:10px 20px;background:#103254;color:#1cd9ff;text-decoration:none;border-radius:10px;font-weight:bold}</style></head><body><h1>🔒 403 Forbidden</h1><p>Directory listing is disabled to protect uploaded files.<br>Only direct URLs and the website homepage are accessible.</p><a href='/'>Go to Homepage</a></body></html>";
+    }
+    public static String defaultMaintenancePage(String path){
+        return "<!doctype html><html><head><meta name='viewport' content='width=device-width,initial-scale=1'><title>503 Service Maintenance</title><style>body{margin:0;padding:50px 20px;background:#06101f;color:#fff;font-family:system-ui,sans-serif;text-align:center}.box{max-width:500px;margin:40px auto;background:#0c1f38;border:1px solid #ffcc00;border-radius:20px;padding:30px;box-shadow:0 0 30px rgba(255,204,0,0.2)}h1{color:#ffcc00;font-size:28px;margin:0 0 10px}p{color:#a0c0e0;font-size:15px;line-height:1.6}small{display:block;margin-top:20px;color:#6b8aa8;font-family:monospace}</style></head><body><div class='box'><h1>🚧 Scheduled Maintenance</h1><p>This resource or entire website is currently undergoing scheduled maintenance and updates. Please check back shortly.</p><small>Resource: "+path+"<br>Salam Private Web Server Engine</small></div></body></html>";
+    }
+    private String maintenancePage(String target){
+        try{
+            File mf = new File(root(), "maintenance.html");
+            if(mf.exists() && mf.isFile()) return readText(mf);
+        }catch(Exception ignored){}
+        return defaultMaintenancePage(target);
     }
     private String directory(File d,String path){StringBuilder h=new StringBuilder("<!doctype html><html><meta name=viewport content=width=device-width><body style='font-family:system-ui;background:#06101f;color:white;padding:20px'><h2>📁 ").append(html(path)).append("</h2>");File[]fs=d.listFiles();if(fs!=null)for(File f:fs){String p=(path.endsWith("/")?path:path+"/")+f.getName();h.append("<p><a style='color:#19dfff' href='").append(html(p)).append("'>").append(f.isDirectory()?"📂 ":"📄 ").append(html(f.getName())).append("</a></p>");}return h.append("</body></html>").toString();}
 
