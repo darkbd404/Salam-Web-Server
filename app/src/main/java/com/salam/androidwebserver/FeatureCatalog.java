@@ -143,7 +143,7 @@ public final class FeatureCatalog {
         add("📡", "Webhook Trigger Simulator", "Send custom HTTP POST webhooks to test remote endpoints", CAT_DEV, "webhook");
         add("⏱️", "Epoch Unix Timestamp Converter", "Convert epoch milliseconds to human-readable date & time", CAT_DEV, "timestamp");
         add("🔢", "Color Hex / RGB / HSL Converter", "Convert between CSS color formats with live preview swatch", CAT_DEV, "colorconvert");
-        add("🔠", "Lorem Ipsum Dummy Text Gen", "Generate sample paragraphs and headers for web design testing", CAT_DEV, "loremipsum");
+        add("🔠", "Lorem Ipsum Text Generator", "Generate sample paragraphs and headers for web design testing", CAT_DEV, "loremipsum");
 
         // --- 7. SYSTEM DIAGNOSTICS & ADMIN (16 tools) ---
         add("💓", "Website Health & Uptime Checker", "Test responsiveness, response time and HTTP status of any URL", CAT_ADMIN, "webhealth");

@@ -2009,10 +2009,8 @@ public class MainActivity extends Activity {
                     if (ff.isDirectory()) {
                         cwd = (cwd.equals("/") ? "/" : cwd + "/") + ff.getName();
                         show(2);
-                    } else if (ff.getName().endsWith(".png") || ff.getName().endsWith(".jpg") || ff.getName().endsWith(".jpeg") || ff.getName().endsWith(".webp") || ff.getName().endsWith(".gif")) {
-                        imagePreviewDialog(ff);
                     } else {
-                        edit(ff);
+                        fileUrlHubDialog(ff);
                     }
                 }, () -> fileMenu(ff));
 
@@ -2031,7 +2029,18 @@ public class MainActivity extends Activity {
             for (File f : fs) {
                 final File ff = f;
                 String nm = f.getName();
-                LinearLayout row = fileRowView(f, () -> fileMenu(ff));
+                LinearLayout row = fileRowView(f, () -> {
+                    if (ff.isDirectory()) {
+                        cwd = (cwd.equals("/") ? "/" : cwd + "/") + ff.getName();
+                        show(2);
+                    } else {
+                        fileUrlHubDialog(ff);
+                    }
+                });
+                row.setOnLongClickListener(v -> {
+                    fileMenu(ff);
+                    return true;
+                });
                 row.setTag(nm.toLowerCase(Locale.US));
                 body.addView(row);
             }
@@ -2052,15 +2061,213 @@ public class MainActivity extends Activity {
         });
     }
 
+    String getPublicFileUrl(File f) {
+        String base = displayUrl();
+        if (base.endsWith("/")) base = base.substring(0, base.length() - 1);
+        String rel = pathOf(f);
+        if (!rel.startsWith("/")) rel = "/" + rel;
+        return base + rel;
+    }
+
+    String getLocalFileUrl(File f) {
+        String base = WebServerService.currentUrl(this);
+        if (base.endsWith("/")) base = base.substring(0, base.length() - 1);
+        String rel = pathOf(f);
+        if (!rel.startsWith("/")) rel = "/" + rel;
+        return base + rel;
+    }
+
+    void fileUrlHubDialog(File f) {
+        String name = f.getName();
+        String rel = pathOf(f);
+        String pubUrl = getPublicFileUrl(f);
+        String lanUrl = getLocalFileUrl(f);
+        boolean isMaint = WebServerService.MAINTENANCE_FILES.contains(rel);
+
+        LinearLayout layout = new LinearLayout(this);
+        layout.setOrientation(LinearLayout.VERTICAL);
+        layout.setPadding(dp(16), dp(12), dp(16), dp(12));
+
+        // Header Info Card
+        LinearLayout infoBox = new LinearLayout(this);
+        infoBox.setOrientation(LinearLayout.HORIZONTAL);
+        infoBox.setGravity(Gravity.CENTER_VERTICAL);
+        infoBox.setBackground(bg(Color.rgb(4, 24, 46), 16));
+        infoBox.setPadding(dp(12), dp(10), dp(12), dp(10));
+
+        TextView fileIcon = tv(f.isDirectory() ? "📁" : name.endsWith(".php") ? "🐘" : name.endsWith(".html") ? "🌐" : name.endsWith(".js") ? "📜" : name.endsWith(".css") ? "🎨" : "📄", 28, CYAN);
+        fileIcon.setPadding(0, 0, dp(10), 0);
+        infoBox.addView(fileIcon);
+
+        LinearLayout details = new LinearLayout(this);
+        details.setOrientation(LinearLayout.VERTICAL);
+        TextView fn = tv(name, 14, WHITE);
+        fn.setTypeface(null, Typeface.BOLD);
+        details.addView(fn);
+
+        String meta = (f.isDirectory() ? "Folder • " + fileCount(f) + " items" : size(f.length())) + " • Path: " + rel;
+        details.addView(tv(meta, 10, isMaint ? YELLOW : MUTED));
+        if (isMaint) {
+            details.addView(tv("🚧 MAINTENANCE MODE ACTIVE (HTTP 503)", 9, YELLOW));
+        }
+        infoBox.addView(details, new LinearLayout.LayoutParams(0, -2, 1));
+        layout.addView(infoBox);
+
+        // Section: Public URL
+        TextView pubTitle = tv("\n🌍 PUBLIC LIVE URL (HTTPS / TUNNEL)", 11, GREEN);
+        pubTitle.setTypeface(null, Typeface.BOLD);
+        layout.addView(pubTitle);
+
+        EditText pubText = new EditText(this);
+        pubText.setText(pubUrl);
+        pubText.setTextSize(12);
+        pubText.setTextColor(CYAN);
+        pubText.setBackground(bg(Color.rgb(2, 14, 26), 12));
+        pubText.setPadding(dp(10), dp(8), dp(10), dp(8));
+        pubText.setSelectAllOnFocus(true);
+        layout.addView(pubText);
+
+        LinearLayout pubBtns = new LinearLayout(this);
+        pubBtns.setOrientation(LinearLayout.HORIZONTAL);
+        pubBtns.setPadding(0, dp(6), 0, dp(6));
+
+        TextView copyPubBtn = button("📋 COPY PUBLIC LINK");
+        copyPubBtn.setTextSize(10);
+        copyPubBtn.setOnClickListener(v -> {
+            copy(pubUrl);
+            toast("✅ Public Link Copied!\n" + pubUrl);
+        });
+        LinearLayout.LayoutParams pbp1 = new LinearLayout.LayoutParams(0, dp(38), 1);
+        pbp1.setMargins(0, 0, dp(3), 0);
+        pubBtns.addView(copyPubBtn, pbp1);
+
+        TextView openPubBtn = button("🌐 OPEN");
+        openPubBtn.setTextSize(10);
+        openPubBtn.setBackground(bg(Color.rgb(12, 50, 78), 12));
+        openPubBtn.setOnClickListener(v -> openBrowser(pubUrl));
+        LinearLayout.LayoutParams pbp2 = new LinearLayout.LayoutParams(0, dp(38), 1);
+        pbp2.setMargins(dp(3), 0, dp(3), 0);
+        pubBtns.addView(openPubBtn, pbp2);
+
+        TextView qrPubBtn = button("📱 QR");
+        qrPubBtn.setTextSize(10);
+        qrPubBtn.setBackground(bg(Color.rgb(55, 30, 90), 12));
+        qrPubBtn.setOnClickListener(v -> showQrDialog(pubUrl));
+        LinearLayout.LayoutParams pbp3 = new LinearLayout.LayoutParams(dp(54), dp(38));
+        pbp3.setMargins(dp(3), 0, 0, 0);
+        pubBtns.addView(qrPubBtn, pbp3);
+
+        layout.addView(pubBtns);
+
+        // Section: Local LAN URL
+        TextView lanTitle = tv("\n🏠 LOCAL WI-FI / LAN URL", 11, accent());
+        lanTitle.setTypeface(null, Typeface.BOLD);
+        layout.addView(lanTitle);
+
+        EditText lanText = new EditText(this);
+        lanText.setText(lanUrl);
+        lanText.setTextSize(12);
+        lanText.setTextColor(WHITE);
+        lanText.setBackground(bg(Color.rgb(2, 14, 26), 12));
+        lanText.setPadding(dp(10), dp(8), dp(10), dp(8));
+        lanText.setSelectAllOnFocus(true);
+        layout.addView(lanText);
+
+        LinearLayout lanBtns = new LinearLayout(this);
+        lanBtns.setOrientation(LinearLayout.HORIZONTAL);
+        lanBtns.setPadding(0, dp(6), 0, dp(10));
+
+        TextView copyLanBtn = button("📋 COPY LAN LINK");
+        copyLanBtn.setTextSize(10);
+        copyLanBtn.setBackground(bg(Color.rgb(20, 45, 70), 12));
+        copyLanBtn.setOnClickListener(v -> {
+            copy(lanUrl);
+            toast("✅ LAN Link Copied!\n" + lanUrl);
+        });
+        LinearLayout.LayoutParams plp1 = new LinearLayout.LayoutParams(0, dp(38), 1);
+        plp1.setMargins(0, 0, dp(3), 0);
+        lanBtns.addView(copyLanBtn, plp1);
+
+        TextView shareLanBtn = button("↗️ SHARE LINK");
+        shareLanBtn.setTextSize(10);
+        shareLanBtn.setBackground(bg(Color.rgb(30, 25, 65), 12));
+        shareLanBtn.setOnClickListener(v -> {
+            Intent intent = new Intent(Intent.ACTION_SEND);
+            intent.setType("text/plain");
+            intent.putExtra(Intent.EXTRA_TEXT, "View hosted file: " + pubUrl);
+            startActivity(Intent.createChooser(intent, "Share File Link"));
+        });
+        LinearLayout.LayoutParams plp2 = new LinearLayout.LayoutParams(0, dp(38), 1);
+        plp2.setMargins(dp(3), 0, 0, 0);
+        lanBtns.addView(shareLanBtn, plp2);
+
+        layout.addView(lanBtns);
+
+        // Section: Quick Operations
+        LinearLayout actionRow = new LinearLayout(this);
+        actionRow.setOrientation(LinearLayout.HORIZONTAL);
+
+        if (!f.isDirectory()) {
+            TextView editBtn = button("✏️ EDIT CODE");
+            editBtn.setTextSize(10);
+            editBtn.setBackground(bg(Color.rgb(10, 60, 45), 12));
+            editBtn.setOnClickListener(v -> edit(f));
+            LinearLayout.LayoutParams alp1 = new LinearLayout.LayoutParams(0, dp(36), 1);
+            alp1.setMargins(0, 0, dp(3), 0);
+            actionRow.addView(editBtn, alp1);
+        }
+
+        TextView maintBtn = button(isMaint ? "✅ UNBLOCK 503" : "🚧 SET 503");
+        maintBtn.setTextSize(10);
+        maintBtn.setBackground(bg(isMaint ? Color.rgb(20, 70, 40) : Color.rgb(70, 40, 10), 12));
+        maintBtn.setOnClickListener(v -> {
+            if (isMaint) {
+                WebServerService.MAINTENANCE_FILES.remove(rel);
+                toast("✅ Maintenance mode disabled for: " + name);
+            } else {
+                WebServerService.MAINTENANCE_FILES.add(rel);
+                toast("🚧 Maintenance mode enabled for: " + name);
+            }
+            show(2);
+        });
+        LinearLayout.LayoutParams alp2 = new LinearLayout.LayoutParams(0, dp(36), 1);
+        alp2.setMargins(dp(3), 0, dp(3), 0);
+        actionRow.addView(maintBtn, alp2);
+
+        TextView renameBtn = button("✏️ RENAME");
+        renameBtn.setTextSize(10);
+        renameBtn.setBackground(bg(Color.rgb(30, 40, 60), 12));
+        renameBtn.setOnClickListener(v -> rename(f));
+        LinearLayout.LayoutParams alp3 = new LinearLayout.LayoutParams(0, dp(36), 1);
+        alp3.setMargins(dp(3), 0, 0, 0);
+        actionRow.addView(renameBtn, alp3);
+
+        layout.addView(actionRow);
+
+        ScrollView sc = new ScrollView(this);
+        sc.addView(layout);
+
+        new AlertDialog.Builder(this)
+                .setTitle("🌐 FILE LINK & HOSTING HUB")
+                .setView(sc)
+                .setPositiveButton("DONE", null)
+                .show();
+    }
+
     LinearLayout fileGridCardView(File f, Runnable onClick, Runnable onLongClick) {
         LinearLayout c = card();
         c.setOrientation(LinearLayout.VERTICAL);
         c.setGravity(Gravity.CENTER);
-        c.setPadding(dp(8), dp(10), dp(8), dp(10));
+        c.setPadding(dp(8), dp(8), dp(8), dp(8));
 
         String name = f.getName();
         String relPath = pathOf(f);
         boolean isMaint = WebServerService.MAINTENANCE_FILES.contains(relPath);
+
+        // Header with Type Icon & Quick Link Copy Button
+        LinearLayout topHeader = new LinearLayout(this);
+        topHeader.setOrientation(LinearLayout.HORIZONTAL);
+        topHeader.setGravity(Gravity.CENTER_VERTICAL);
 
         String iconText = "📄";
         int iconColor = WHITE;
@@ -2090,9 +2297,24 @@ public class MainActivity extends Activity {
             iconColor = Color.rgb(255, 100, 180);
         }
 
-        TextView icTv = tv(iconText, 30, iconColor);
+        TextView icTv = tv(iconText, 26, iconColor);
         icTv.setGravity(Gravity.CENTER);
-        c.addView(icTv, new LinearLayout.LayoutParams(-1, dp(38)));
+        topHeader.addView(icTv, new LinearLayout.LayoutParams(0, dp(34), 1));
+
+        if (!f.isDirectory()) {
+            TextView linkQuickBtn = tv("🔗", 14, CYAN);
+            linkQuickBtn.setGravity(Gravity.CENTER);
+            linkQuickBtn.setBackground(bg(Color.rgb(4, 28, 52), 10));
+            linkQuickBtn.setPadding(dp(4), dp(2), dp(4), dp(2));
+            linkQuickBtn.setOnClickListener(v -> {
+                String u = getPublicFileUrl(f);
+                copy(u);
+                toast("🔗 Copied Public Link:\n" + u);
+            });
+            topHeader.addView(linkQuickBtn, new LinearLayout.LayoutParams(dp(28), dp(28)));
+        }
+
+        c.addView(topHeader, new LinearLayout.LayoutParams(-1, dp(34)));
 
         TextView titleTv = tv(name, 12, isMaint ? YELLOW : WHITE);
         titleTv.setTypeface(null, Typeface.BOLD);
@@ -2107,7 +2329,7 @@ public class MainActivity extends Activity {
         c.addView(subTv, new LinearLayout.LayoutParams(-1, dp(18)));
 
         if (isMaint) {
-            TextView mBadge = tv("🚧 MAINT", 8, YELLOW);
+            TextView mBadge = tv("🚧 MAINT ON", 8, YELLOW);
             mBadge.setBackground(bg(Color.rgb(60, 35, 0), 6));
             mBadge.setPadding(dp(4), dp(1), dp(4), dp(1));
             mBadge.setGravity(Gravity.CENTER);
@@ -2168,6 +2390,18 @@ public class MainActivity extends Activity {
         m.addView(tv(meta, 10, isMaint ? YELLOW : MUTED), new LinearLayout.LayoutParams(-1, dp(22)));
         c.addView(m, new LinearLayout.LayoutParams(0, dp(54), 1));
 
+        if (!f.isDirectory()) {
+            TextView linkBtn = tv("🔗", 18, CYAN);
+            linkBtn.setGravity(Gravity.CENTER);
+            linkBtn.setPadding(dp(6), 0, dp(6), 0);
+            linkBtn.setOnClickListener(v -> {
+                String u = getPublicFileUrl(f);
+                copy(u);
+                toast("🔗 Copied Public Link:\n" + u);
+            });
+            c.addView(linkBtn, new LinearLayout.LayoutParams(dp(36), dp(54)));
+        }
+
         TextView ar = tv("›", 28, accent());
         ar.setGravity(Gravity.CENTER);
         c.addView(ar, new LinearLayout.LayoutParams(dp(30), dp(54)));
@@ -2208,12 +2442,12 @@ public class MainActivity extends Activity {
         String path = pathOf(f);
         boolean isMaint = WebServerService.MAINTENANCE_FILES.contains(path);
         String maintAction = isMaint ? "✅ Disable Maintenance Mode (Turn ON)" : "🚧 Enable Maintenance Mode (Turn OFF)";
-
         boolean isImage = f.isFile() && (f.getName().endsWith(".png") || f.getName().endsWith(".jpg") || f.getName().endsWith(".jpeg") || f.getName().endsWith(".webp") || f.getName().endsWith(".gif"));
 
         List<String> items = new ArrayList<>();
         if (f.isDirectory()) {
             items.add("📂 Open Folder");
+            items.add("🌐 View Folder Links & QR");
             items.add(maintAction);
             items.add("✏️ Rename");
             items.add("📋 Copy");
@@ -2221,14 +2455,17 @@ public class MainActivity extends Activity {
             items.add("📦 Create ZIP");
             items.add("🗑️ Delete");
         } else {
+            items.add("🌐 View & Copy Live URLs (Public / LAN)");
+            items.add("📋 Copy Public Link (1-Tap)");
+            items.add("🏠 Copy Local LAN Link (1-Tap)");
             items.add("✏️ Edit in Code Editor");
             if (isImage) items.add("🖼️ View Image Preview");
+            items.add("🌐 Open in Web Browser");
             items.add(maintAction);
             items.add("✏️ Rename");
             items.add("📋 Copy");
             items.add("↔️ Move");
             items.add("📦 Create ZIP");
-            items.add("⬇️ Copy Download URL");
             items.add("🗑️ Delete");
         }
 
@@ -2238,12 +2475,26 @@ public class MainActivity extends Activity {
                 .setTitle("⚙️ " + f.getName())
                 .setItems(a, (d, w) -> {
                     String s = a[w];
-                    if (s.contains("Open")) {
+                    if (s.contains("Open Folder")) {
                         cwd = (cwd.equals("/") ? "/" : cwd + "/") + f.getName();
                         show(2);
-                    } else if (s.contains("Edit")) edit(f);
-                    else if (s.contains("Image Preview")) imagePreviewDialog(f);
-                    else if (s.contains("Maintenance")) {
+                    } else if (s.contains("View & Copy Live URLs") || s.contains("View Folder Links")) {
+                        fileUrlHubDialog(f);
+                    } else if (s.contains("Copy Public Link")) {
+                        String u = getPublicFileUrl(f);
+                        copy(u);
+                        toast("✅ Public URL copied:\n" + u);
+                    } else if (s.contains("Copy Local LAN Link")) {
+                        String u = getLocalFileUrl(f);
+                        copy(u);
+                        toast("✅ LAN URL copied:\n" + u);
+                    } else if (s.contains("Edit in Code Editor")) {
+                        edit(f);
+                    } else if (s.contains("Image Preview")) {
+                        imagePreviewDialog(f);
+                    } else if (s.contains("Open in Web Browser")) {
+                        openBrowser(getPublicFileUrl(f));
+                    } else if (s.contains("Maintenance")) {
                         if (isMaint) {
                             WebServerService.MAINTENANCE_FILES.remove(path);
                             toast("✅ Maintenance mode disabled for: " + f.getName());
@@ -2252,12 +2503,17 @@ public class MainActivity extends Activity {
                             toast("🚧 Maintenance mode enabled for: " + f.getName());
                         }
                         show(2);
-                    } else if (s.contains("Rename")) rename(f);
-                    else if (s.contains("Copy")) copyMove(f, false);
-                    else if (s.contains("Move")) copyMove(f, true);
-                    else if (s.contains("Create ZIP")) zipOne(f);
-                    else if (s.contains("Download")) copy(displayUrl() + pathOf(f));
-                    else deleteConfirm(f);
+                    } else if (s.contains("Rename")) {
+                        rename(f);
+                    } else if (s.contains("Copy")) {
+                        copyMove(f, false);
+                    } else if (s.contains("Move")) {
+                        copyMove(f, true);
+                    } else if (s.contains("Create ZIP")) {
+                        zipOne(f);
+                    } else {
+                        deleteConfirm(f);
+                    }
                 })
                 .show();
     }
@@ -2417,14 +2673,7 @@ public class MainActivity extends Activity {
     }
 
     void showUploadedUrl(File f) {
-        String u = displayUrl() + pathOf(f);
-        new AlertDialog.Builder(this)
-                .setTitle("✅ FILE UPLOADED")
-                .setMessage("Live URL ready:\n\n" + u)
-                .setNegativeButton("CLOSE", null)
-                .setNeutralButton("🔗 COPY URL", (d, w) -> copy(u))
-                .setPositiveButton("🌐 OPEN", (d, w) -> openBrowser(u))
-                .show();
+        fileUrlHubDialog(f);
     }
 
     void zipMenu() {
