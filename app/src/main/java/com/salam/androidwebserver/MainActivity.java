@@ -24,7 +24,18 @@ public class MainActivity extends Activity {
     static final int BG = Color.rgb(2, 9, 18), PANEL = Color.rgb(6, 23, 41), PANEL2 = Color.rgb(10, 34, 57);
     static final int WHITE = Color.WHITE, MUTED = Color.rgb(145, 174, 205), CYAN = Color.rgb(28, 220, 255), BLUE = Color.rgb(74, 82, 255);
     static final int GREEN = Color.rgb(35, 239, 132), RED = Color.rgb(255, 57, 82), PURPLE = Color.rgb(188, 75, 255), YELLOW = Color.rgb(255, 205, 45), ORANGE = Color.rgb(255, 135, 35);
-    static final int[] LED = {GREEN, CYAN, PURPLE, YELLOW, WHITE, ORANGE, RED};
+    
+    // 8 Indicator LEDs: 🔴 🔴 🟠 🟡 🟢 🟢 🟢 🟢
+    static final int[] LED = {
+        Color.rgb(255, 45, 60),   // 🔴 Red 1
+        Color.rgb(255, 65, 55),   // 🔴 Red 2
+        Color.rgb(255, 140, 25),  // 🟠 Orange
+        Color.rgb(255, 215, 40),  // 🟡 Light Yellow / Amber
+        Color.rgb(130, 240, 75),  // 🟢 Light Green
+        Color.rgb(45, 225, 95),   // 🟢 Green
+        Color.rgb(15, 240, 120),  // 🟢 Bright Green
+        Color.rgb(0, 255, 140)    // 🟢 Pure Green
+    };
 
     Handler h = new Handler(Looper.getMainLooper());
     SharedPreferences p;
@@ -110,6 +121,26 @@ public class MainActivity extends Activity {
         g.setColor(c);
         g.setCornerRadius(dp(r));
         return g;
+    }
+
+    GradientDrawable boxBg(int fill, int stroke, float r) {
+        GradientDrawable g = new GradientDrawable();
+        g.setColor(fill);
+        g.setCornerRadius(dp(r));
+        if (stroke != 0) g.setStroke(dp(1), stroke);
+        return g;
+    }
+
+    GradientDrawable innerBoxBg(float r) {
+        int fill = isDayMode() ? Color.rgb(240, 245, 253) : Color.rgb(4, 20, 36);
+        int stroke = isDayMode() ? Color.rgb(215, 228, 244) : Color.rgb(18, 52, 84);
+        return boxBg(fill, stroke, r);
+    }
+
+    GradientDrawable codeBoxBg(float r) {
+        int fill = isDayMode() ? Color.rgb(243, 247, 254) : Color.rgb(2, 14, 26);
+        int stroke = isDayMode() ? Color.rgb(205, 222, 244) : Color.rgb(14, 46, 76);
+        return boxBg(fill, stroke, r);
     }
 
     GradientDrawable grad(float r) {
@@ -383,8 +414,8 @@ public class MainActivity extends Activity {
         LinearLayout rxBox = new LinearLayout(this);
         rxBox.setOrientation(LinearLayout.VERTICAL);
         rxBox.setPadding(dp(10), dp(8), dp(10), dp(8));
-        rxBox.setBackground(bg(Color.rgb(2, 20, 35), 16));
-        TextView rxLab = tv("↓ INBOUND SPEED (RX)", 10, CYAN);
+        rxBox.setBackground(innerBoxBg(16));
+        TextView rxLab = tv("↓ INBOUND SPEED (RX)", 10, isDayMode() ? Color.rgb(0, 110, 185) : CYAN);
         rxLab.setTypeface(null, Typeface.BOLD);
         TextView rxVal = tv("0 B/s", 17, WHITE);
         rxVal.setTypeface(null, Typeface.BOLD);
@@ -394,8 +425,8 @@ public class MainActivity extends Activity {
         LinearLayout txBox = new LinearLayout(this);
         txBox.setOrientation(LinearLayout.VERTICAL);
         txBox.setPadding(dp(10), dp(8), dp(10), dp(8));
-        txBox.setBackground(bg(Color.rgb(18, 10, 36), 16));
-        TextView txLab = tv("↑ OUTBOUND SPEED (TX)", 10, PURPLE);
+        txBox.setBackground(innerBoxBg(16));
+        TextView txLab = tv("↑ OUTBOUND SPEED (TX)", 10, isDayMode() ? Color.rgb(130, 45, 195) : PURPLE);
         txLab.setTypeface(null, Typeface.BOLD);
         TextView txVal = tv("0 B/s", 17, WHITE);
         txVal.setTypeface(null, Typeface.BOLD);
@@ -438,7 +469,7 @@ public class MainActivity extends Activity {
                 LinearLayout c = new LinearLayout(this);
                 c.setOrientation(LinearLayout.VERTICAL);
                 c.setPadding(dp(10), dp(8), dp(8), dp(8));
-                c.setBackground(bg(Color.rgb(2, 16, 29), 16));
+                c.setBackground(innerBoxBg(16));
                 TextView lab = tv(labels[idx], 11, MUTED);
                 lab.setTypeface(null, Typeface.BOLD);
                 TextView val = tv("—", 14, WHITE);
@@ -512,9 +543,9 @@ public class MainActivity extends Activity {
         String[] cats = FeatureCatalog.CATEGORIES;
         for (int i = 0; i < cats.length; i++) {
             final int catIdx = i;
-            TextView chip = tv(cats[i], 11, catIdx == selectedToolCategory ? WHITE : MUTED);
+            TextView chip = tv(cats[i], 11, catIdx == selectedToolCategory ? Color.WHITE : MUTED);
             chip.setTypeface(null, Typeface.BOLD);
-            chip.setBackground(catIdx == selectedToolCategory ? grad(16) : bg(Color.rgb(6, 22, 38), 16));
+            chip.setBackground(catIdx == selectedToolCategory ? grad(16) : innerBoxBg(16));
             chip.setPadding(dp(12), dp(6), dp(12), dp(6));
             chip.setOnClickListener(v -> {
                 selectedToolCategory = catIdx;
@@ -591,7 +622,7 @@ public class MainActivity extends Activity {
         titleRow.addView(t, new LinearLayout.LayoutParams(0, -2, 1));
 
         TextView catTag = tv(category.split(" ")[0], 9, accent());
-        catTag.setBackground(bg(Color.rgb(2, 18, 32), 8));
+        catTag.setBackground(innerBoxBg(8));
         catTag.setPadding(dp(6), dp(2), dp(6), dp(2));
         titleRow.addView(catTag);
 
@@ -680,7 +711,7 @@ public class MainActivity extends Activity {
         EditText hostInput = input("1.1.1.1", "Host to trace (e.g. 1.1.1.1 or 8.8.8.8)");
         b.addView(hostInput);
         TextView res = tv("Tap 'TRACE ROUTE' to trace network hops...", 12, MUTED);
-        res.setBackground(bg(Color.rgb(2, 12, 22), 12));
+        res.setBackground(codeBoxBg(12));
         res.setPadding(dp(10), dp(10), dp(10), dp(10));
         b.addView(res, new LinearLayout.LayoutParams(-1, dp(180)));
         AlertDialog d = new AlertDialog.Builder(this)
@@ -715,7 +746,7 @@ public class MainActivity extends Activity {
         EditText domInput = input("google.com", "Domain name (e.g. google.com)");
         b.addView(domInput);
         TextView res = tv("Tap 'LOOKUP' to query domain information...", 12, MUTED);
-        res.setBackground(bg(Color.rgb(2, 12, 22), 12));
+        res.setBackground(codeBoxBg(12));
         res.setPadding(dp(10), dp(10), dp(10), dp(10));
         b.addView(res, new LinearLayout.LayoutParams(-1, dp(180)));
         AlertDialog d = new AlertDialog.Builder(this)
@@ -743,7 +774,7 @@ public class MainActivity extends Activity {
         b.setOrientation(LinearLayout.VERTICAL);
         b.setPadding(dp(16), dp(10), dp(16), dp(10));
         TextView res = tv("Tap 'START TEST' to benchmark socket throughput...", 12, MUTED);
-        res.setBackground(bg(Color.rgb(2, 12, 22), 12));
+        res.setBackground(codeBoxBg(12));
         res.setPadding(dp(10), dp(10), dp(10), dp(10));
         b.addView(res, new LinearLayout.LayoutParams(-1, dp(160)));
         AlertDialog d = new AlertDialog.Builder(this)
@@ -772,7 +803,7 @@ public class MainActivity extends Activity {
         EditText hostInput = input("google.com", "Host to inspect (e.g. google.com:443)");
         b.addView(hostInput);
         TextView res = tv("Tap 'INSPECT' to verify peer SSL/TLS certificate...", 12, MUTED);
-        res.setBackground(bg(Color.rgb(2, 12, 22), 12));
+        res.setBackground(codeBoxBg(12));
         res.setPadding(dp(10), dp(10), dp(10), dp(10));
         b.addView(res, new LinearLayout.LayoutParams(-1, dp(180)));
         AlertDialog d = new AlertDialog.Builder(this)
@@ -849,7 +880,7 @@ public class MainActivity extends Activity {
         EditText pwdInput = input("SalamCyber@2026!", "Enter password to test");
         b.addView(pwdInput);
         TextView res = tv("Password Analysis:\n• Entropy: 78.4 bits\n• Strength: VERY STRONG\n• Estimated Crack Time: Centuries", 12, GREEN);
-        res.setBackground(bg(Color.rgb(2, 12, 22), 12));
+        res.setBackground(codeBoxBg(12));
         res.setPadding(dp(10), dp(10), dp(10), dp(10));
         b.addView(res, new LinearLayout.LayoutParams(-1, dp(140)));
         pwdInput.addTextChangedListener(new TextWatcher() {
@@ -884,7 +915,7 @@ public class MainActivity extends Activity {
         codeInput.setMinLines(4);
         b.addView(codeInput);
         TextView res = tv("Minified code will appear here...", 12, WHITE);
-        res.setBackground(bg(Color.rgb(2, 12, 22), 12));
+        res.setBackground(codeBoxBg(12));
         res.setPadding(dp(10), dp(10), dp(10), dp(10));
         b.addView(res, new LinearLayout.LayoutParams(-1, dp(130)));
         new AlertDialog.Builder(this)
@@ -904,7 +935,7 @@ public class MainActivity extends Activity {
         mdInput.setMinLines(4);
         b.addView(mdInput);
         TextView res = tv("Compiled HTML snippet will appear here...", 12, WHITE);
-        res.setBackground(bg(Color.rgb(2, 12, 22), 12));
+        res.setBackground(codeBoxBg(12));
         res.setPadding(dp(10), dp(10), dp(10), dp(10));
         b.addView(res, new LinearLayout.LayoutParams(-1, dp(130)));
         new AlertDialog.Builder(this)
@@ -930,7 +961,7 @@ public class MainActivity extends Activity {
         EditText uaInput = input(System.getProperty("http.agent", "Mozilla/5.0 (Linux; Android 14) Chrome/120.0 Mobile Safari/537.36"), "User-Agent string");
         b.addView(uaInput);
         TextView res = tv(NetworkTools.parseUserAgent(uaInput.getText().toString()), 12, WHITE);
-        res.setBackground(bg(Color.rgb(2, 12, 22), 12));
+        res.setBackground(codeBoxBg(12));
         res.setPadding(dp(10), dp(10), dp(10), dp(10));
         b.addView(res, new LinearLayout.LayoutParams(-1, dp(140)));
         uaInput.addTextChangedListener(new TextWatcher() {
@@ -981,7 +1012,7 @@ public class MainActivity extends Activity {
         jwtInput.setMinLines(3);
         b.addView(jwtInput);
         TextView res = tv("Decoded Payload will appear here...", 12, WHITE);
-        res.setBackground(bg(Color.rgb(2, 12, 22), 12));
+        res.setBackground(codeBoxBg(12));
         res.setPadding(dp(10), dp(10), dp(10), dp(10));
         b.addView(res, new LinearLayout.LayoutParams(-1, dp(140)));
         new AlertDialog.Builder(this)
@@ -1016,7 +1047,7 @@ public class MainActivity extends Activity {
         EditText sqlInput = input("SELECT sqlite_version();", "SQL Query");
         b.addView(sqlInput);
         TextView res = tv("SQLite Engine 3.42.0 (Android Embedded)\nResult:\n3.42.0", 12, GREEN);
-        res.setBackground(bg(Color.rgb(2, 12, 22), 12));
+        res.setBackground(codeBoxBg(12));
         res.setPadding(dp(10), dp(10), dp(10), dp(10));
         b.addView(res, new LinearLayout.LayoutParams(-1, dp(130)));
         new AlertDialog.Builder(this)
@@ -1284,7 +1315,7 @@ public class MainActivity extends Activity {
         b.addView(hostInput);
 
         TextView resultView = tv("Tap 'START PING' to test socket latency...", 12, MUTED);
-        resultView.setBackground(bg(Color.rgb(2, 12, 22), 12));
+        resultView.setBackground(codeBoxBg(12));
         resultView.setPadding(dp(10), dp(10), dp(10), dp(10));
         b.addView(resultView, new LinearLayout.LayoutParams(-1, dp(140)));
 
@@ -1340,7 +1371,7 @@ public class MainActivity extends Activity {
         b.addView(hostInput);
 
         TextView resultView = tv("Tap 'SCAN' to scan 22 common service ports...", 12, MUTED);
-        resultView.setBackground(bg(Color.rgb(2, 12, 22), 12));
+        resultView.setBackground(codeBoxBg(12));
         resultView.setPadding(dp(10), dp(10), dp(10), dp(10));
         b.addView(resultView, new LinearLayout.LayoutParams(-1, dp(180)));
 
@@ -1399,7 +1430,7 @@ public class MainActivity extends Activity {
         b.addView(typeSpinner);
 
         TextView resultView = tv("Tap 'LOOKUP' to query Cloudflare DNS-over-HTTPS...", 12, MUTED);
-        resultView.setBackground(bg(Color.rgb(2, 12, 22), 12));
+        resultView.setBackground(codeBoxBg(12));
         resultView.setPadding(dp(10), dp(10), dp(10), dp(10));
         b.addView(resultView, new LinearLayout.LayoutParams(-1, dp(160)));
 
@@ -1454,7 +1485,7 @@ public class MainActivity extends Activity {
         b.addView(info);
 
         TextView resultView = tv("Tap 'SCAN WI-FI' to discover active LAN devices...", 12, MUTED);
-        resultView.setBackground(bg(Color.rgb(2, 12, 22), 12));
+        resultView.setBackground(codeBoxBg(12));
         resultView.setPadding(dp(10), dp(10), dp(10), dp(10));
         b.addView(resultView, new LinearLayout.LayoutParams(-1, dp(180)));
 
@@ -1501,7 +1532,7 @@ public class MainActivity extends Activity {
         b.addView(cidrInput);
 
         TextView resultView = tv("Tap 'CALCULATE' to compute subnet metrics...", 12, MUTED);
-        resultView.setBackground(bg(Color.rgb(2, 12, 22), 12));
+        resultView.setBackground(codeBoxBg(12));
         resultView.setPadding(dp(10), dp(10), dp(10), dp(10));
         b.addView(resultView, new LinearLayout.LayoutParams(-1, dp(170)));
 
@@ -1532,7 +1563,7 @@ public class MainActivity extends Activity {
         b.setPadding(dp(16), dp(10), dp(16), dp(10));
 
         TextView resultView = tv("Fetching public IP and Geo-Location data...", 12, MUTED);
-        resultView.setBackground(bg(Color.rgb(2, 12, 22), 12));
+        resultView.setBackground(codeBoxBg(12));
         resultView.setPadding(dp(10), dp(10), dp(10), dp(10));
         b.addView(resultView, new LinearLayout.LayoutParams(-1, dp(170)));
 
@@ -1582,7 +1613,7 @@ public class MainActivity extends Activity {
         b.addView(urlInput);
 
         TextView resultView = tv("Tap 'INSPECT' to fetch response headers and SSL details...", 12, MUTED);
-        resultView.setBackground(bg(Color.rgb(2, 12, 22), 12));
+        resultView.setBackground(codeBoxBg(12));
         resultView.setPadding(dp(10), dp(10), dp(10), dp(10));
         b.addView(resultView, new LinearLayout.LayoutParams(-1, dp(180)));
 
@@ -1634,7 +1665,7 @@ public class MainActivity extends Activity {
         b.addView(urlInput);
 
         TextView resultView = tv("Tap 'CHECK HEALTH' to test endpoint response...", 12, MUTED);
-        resultView.setBackground(bg(Color.rgb(2, 12, 22), 12));
+        resultView.setBackground(codeBoxBg(12));
         resultView.setPadding(dp(10), dp(10), dp(10), dp(10));
         b.addView(resultView, new LinearLayout.LayoutParams(-1, dp(140)));
 
@@ -1682,7 +1713,7 @@ public class MainActivity extends Activity {
         b.addView(textInput);
 
         TextView resultView = tv("Result will appear here...", 12, WHITE);
-        resultView.setBackground(bg(Color.rgb(2, 12, 22), 12));
+        resultView.setBackground(codeBoxBg(12));
         resultView.setPadding(dp(10), dp(10), dp(10), dp(10));
         b.addView(resultView, new LinearLayout.LayoutParams(-1, dp(120)));
 
@@ -1719,7 +1750,7 @@ public class MainActivity extends Activity {
         b.addView(textInput);
 
         TextView resultView = tv("Result will appear here...", 12, WHITE);
-        resultView.setBackground(bg(Color.rgb(2, 12, 22), 12));
+        resultView.setBackground(codeBoxBg(12));
         resultView.setPadding(dp(10), dp(10), dp(10), dp(10));
         b.addView(resultView, new LinearLayout.LayoutParams(-1, dp(120)));
 
@@ -1760,7 +1791,7 @@ public class MainActivity extends Activity {
         b.addView(algoSpinner);
 
         TextView resultView = tv("Tap 'HASH' to generate checksum...", 12, WHITE);
-        resultView.setBackground(bg(Color.rgb(2, 12, 22), 12));
+        resultView.setBackground(codeBoxBg(12));
         resultView.setPadding(dp(10), dp(10), dp(10), dp(10));
         b.addView(resultView, new LinearLayout.LayoutParams(-1, dp(120)));
 
@@ -1787,7 +1818,7 @@ public class MainActivity extends Activity {
         b.addView(jsonInput);
 
         TextView resultView = tv("Beautified JSON will appear here...", 12, WHITE);
-        resultView.setBackground(bg(Color.rgb(2, 12, 22), 12));
+        resultView.setBackground(codeBoxBg(12));
         resultView.setPadding(dp(10), dp(10), dp(10), dp(10));
         b.addView(resultView, new LinearLayout.LayoutParams(-1, dp(150)));
 
@@ -1809,7 +1840,7 @@ public class MainActivity extends Activity {
 
         TextView resultView = tv("Tap 'GENERATE' for secure token...", 15, CYAN);
         resultView.setTypeface(null, Typeface.BOLD);
-        resultView.setBackground(bg(Color.rgb(2, 12, 22), 12));
+        resultView.setBackground(codeBoxBg(12));
         resultView.setPadding(dp(12), dp(12), dp(12), dp(12));
         b.addView(resultView);
 
@@ -1852,7 +1883,7 @@ public class MainActivity extends Activity {
 
         TextView resultView = tv(UUID.randomUUID().toString(), 14, CYAN);
         resultView.setTypeface(null, Typeface.BOLD);
-        resultView.setBackground(bg(Color.rgb(2, 12, 22), 12));
+        resultView.setBackground(codeBoxBg(12));
         resultView.setPadding(dp(12), dp(12), dp(12), dp(12));
         b.addView(resultView);
 
@@ -2156,7 +2187,7 @@ public class MainActivity extends Activity {
         LinearLayout infoBox = new LinearLayout(this);
         infoBox.setOrientation(LinearLayout.HORIZONTAL);
         infoBox.setGravity(Gravity.CENTER_VERTICAL);
-        infoBox.setBackground(bg(Color.rgb(4, 24, 46), 16));
+        infoBox.setBackground(innerBoxBg(16));
         infoBox.setPadding(dp(12), dp(10), dp(12), dp(10));
 
         TextView fileIcon = tv(f.isDirectory() ? "📁" : name.endsWith(".php") ? "🐘" : name.endsWith(".html") ? "🌐" : name.endsWith(".js") ? "📜" : name.endsWith(".css") ? "🎨" : "📄", 28, CYAN);
@@ -2185,8 +2216,8 @@ public class MainActivity extends Activity {
         EditText pubText = new EditText(this);
         pubText.setText(pubUrl);
         pubText.setTextSize(12);
-        pubText.setTextColor(CYAN);
-        pubText.setBackground(bg(Color.rgb(2, 14, 26), 12));
+        pubText.setTextColor(isDayMode() ? Color.rgb(0, 105, 185) : CYAN);
+        pubText.setBackground(codeBoxBg(12));
         pubText.setPadding(dp(10), dp(8), dp(10), dp(8));
         pubText.setSelectAllOnFocus(true);
         layout.addView(pubText);
@@ -2231,8 +2262,8 @@ public class MainActivity extends Activity {
         EditText lanText = new EditText(this);
         lanText.setText(lanUrl);
         lanText.setTextSize(12);
-        lanText.setTextColor(WHITE);
-        lanText.setBackground(bg(Color.rgb(2, 14, 26), 12));
+        lanText.setTextColor(textCol());
+        lanText.setBackground(codeBoxBg(12));
         lanText.setPadding(dp(10), dp(8), dp(10), dp(8));
         lanText.setSelectAllOnFocus(true);
         layout.addView(lanText);
@@ -2631,8 +2662,8 @@ public class MainActivity extends Activity {
         EditText e = new EditText(this);
         e.setMinLines(16);
         e.setGravity(Gravity.TOP);
-        e.setTextColor(WHITE);
-        e.setBackgroundColor(Color.rgb(2, 12, 22));
+        e.setTextColor(textCol());
+        e.setBackground(codeBoxBg(12));
         e.setPadding(dp(12), dp(12), dp(12), dp(12));
         try {
             e.setText(WebServerService.readText(f));
@@ -2862,8 +2893,8 @@ public class MainActivity extends Activity {
         body.addView(flowCard);
 
         section("📝  LIVE REQUEST LOG");
-        TextView l = tv("", 11, Color.rgb(190, 225, 245));
-        l.setBackground(bg(Color.rgb(2, 12, 22), 16));
+        TextView l = tv("", 11, WHITE);
+        l.setBackground(codeBoxBg(16));
         l.setPadding(dp(10), dp(10), dp(10), dp(10));
         body.addView(l);
 
@@ -3091,8 +3122,8 @@ public class MainActivity extends Activity {
         EditText e = new EditText(this);
         e.setText(s);
         e.setHint(hint);
-        e.setTextColor(WHITE);
-        e.setHintTextColor(MUTED);
+        e.setTextColor(textCol());
+        e.setHintTextColor(mutedCol());
         e.setSingleLine(false);
         return e;
     }
@@ -3395,7 +3426,7 @@ public class MainActivity extends Activity {
             url = tv(displayUrl() + "\n🔗 Tap URL to copy or scan QR", 12, accent());
             url.setGravity(Gravity.CENTER);
             url.setPadding(dp(8), 0, dp(8), 0);
-            url.setBackground(bg(Color.rgb(2, 17, 31), 16));
+            url.setBackground(innerBoxBg(16));
             url.setOnClickListener(v -> copy(displayUrl()));
             addView(url);
 
@@ -3468,6 +3499,7 @@ public class MainActivity extends Activity {
             }
 
             url.setText(displayUrl() + "\n🔗 Tap URL to copy or share");
+            url.setTextColor(isDayMode() ? Color.rgb(0, 105, 185) : accent());
             startBtn.setText(on ? "■  STOP SERVER" : "▶  START SERVER");
             startBtn.setBackground(on ? bg(Color.rgb(87, 18, 34), 15) : grad(15));
             webBtn.setBackground(bg(Color.rgb(4, 68, 88), 15));
@@ -3495,23 +3527,59 @@ public class MainActivity extends Activity {
 
         protected void onDraw(Canvas c) {
             super.onDraw(c);
-            float y = dp(40), gap = getWidth() / 8f;
+            float y = dp(40), gap = getWidth() / 9f;
             long age = System.currentTimeMillis() - sequence;
-            int active = running ? Math.min(7, (int) (age / 200) + 1) : 0;
-            for (int i = 0; i < 7; i++) {
+            int active = running ? Math.min(8, (int) (age / 120) + 1) : 4;
+
+            boolean day = isDayMode();
+            int socketFill = day ? Color.rgb(226, 236, 248) : Color.rgb(10, 22, 36);
+            int socketStroke = day ? Color.rgb(180, 202, 226) : Color.rgb(22, 48, 76);
+            int offLensFill = day ? Color.rgb(205, 218, 232) : Color.rgb(18, 30, 44);
+
+            for (int i = 0; i < 8; i++) {
                 float x = gap * (i + 1);
-                int col = running ? (i < active ? LED[i] : Color.rgb(28, 46, 62)) : (i == 6 ? RED : Color.rgb(26, 36, 48));
-                paint.setColor(col);
-                if (running && i < active) {
-                    float pulse = (float) (0.55 + 0.45 * Math.sin(System.currentTimeMillis() / 200.0 + i * 0.8));
-                    paint.setShadowLayer(dp(6 + 8 * pulse), 0, 0, col);
-                } else if (!running && i == 6) {
-                    paint.setShadowLayer(dp(4), 0, 0, RED);
+
+                // 1. Draw outer socket ring / bezel for perfect Day & Night visibility
+                paint.setStyle(Paint.Style.FILL);
+                paint.setColor(socketFill);
+                c.drawCircle(x, y, dp(11), paint);
+
+                paint.setStyle(Paint.Style.STROKE);
+                paint.setStrokeWidth(dp(1.2f));
+                paint.setColor(socketStroke);
+                c.drawCircle(x, y, dp(11), paint);
+                paint.setStyle(Paint.Style.FILL);
+
+                // 2. Determine if this LED is ON:
+                // When running: LEDs illuminate up to active count (🔴🔴🟠🟡🟢🟢🟢🟢)
+                // When off: only first 4 LEDs (🔴🔴🟠🟡 Red, Orange, Yellow) remain ON; green LEDs (4..7) turn off
+                boolean isLit = running ? (i < active) : (i < 4);
+
+                if (isLit) {
+                    int col = LED[i];
+                    paint.setColor(col);
+                    if (running) {
+                        float pulse = (float) (0.55 + 0.45 * Math.sin(System.currentTimeMillis() / 180.0 + i * 0.75));
+                        paint.setShadowLayer(dp(5 + 7 * pulse), 0, 0, col);
+                    } else {
+                        paint.setShadowLayer(dp(4), 0, 0, col);
+                    }
+                    c.drawCircle(x, y, dp(8.5f), paint);
+                    paint.clearShadowLayer();
+
+                    // Specular highlight reflection
+                    paint.setColor(Color.argb(170, 255, 255, 255));
+                    c.drawCircle(x - dp(2.5f), y - dp(2.5f), dp(2.2f), paint);
+                } else {
+                    // Inactive unlit LED lens (Green LEDs when server is off)
+                    paint.setColor(offLensFill);
+                    c.drawCircle(x, y, dp(8.5f), paint);
+                    paint.setColor(day ? Color.rgb(185, 198, 212) : Color.rgb(12, 20, 30));
+                    c.drawCircle(x, y, dp(4f), paint);
                 }
-                c.drawCircle(x, y, dp(9), paint);
-                paint.clearShadowLayer();
             }
-            if (running) postInvalidateDelayed(60);
+            if (running) postInvalidateDelayed(50);
+            else postInvalidateDelayed(250);
         }
     }
 
