@@ -82,7 +82,7 @@ public class WebServerService extends Service {
                 @Override public void onTunnelError(String error){log("TUNNEL ERROR | "+error);notifyStatus();}
                 @Override public void onTunnelStopped(){log("TUNNEL STOPPED");notifyStatus();}
             });
-            String prov=pref().getString("tunnelProvider",TunnelManager.PROVIDER_LOCALHOST_RUN);
+            String prov=pref().getString("tunnelProvider",TunnelManager.PROVIDER_AUTO_TURBO);
             TunnelManager.getInstance().startTunnel(this,p,prov);
         }
     }catch(Exception e){running=false;log("START ERROR | "+e.getClass().getSimpleName()+" | "+e.getMessage());stopSelf();}}}

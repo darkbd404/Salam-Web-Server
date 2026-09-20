@@ -329,7 +329,7 @@ public class MainActivity extends Activity {
 
         // Tunnel Provider Selector
         if (isPublic) {
-            String currentProv = p.getString("tunnelProvider", TunnelManager.PROVIDER_LOCALHOST_RUN);
+            String currentProv = p.getString("tunnelProvider", TunnelManager.PROVIDER_AUTO_TURBO);
             LinearLayout provRow = new LinearLayout(this);
             provRow.setOrientation(LinearLayout.HORIZONTAL);
             provRow.setGravity(Gravity.CENTER_VERTICAL);
@@ -1943,22 +1943,64 @@ public class MainActivity extends Activity {
 
     void chooseTunnelProvider() {
         String[] provs = {
-                TunnelManager.PROVIDER_LOCALHOST_RUN,
+                TunnelManager.PROVIDER_AUTO_TURBO,
+                TunnelManager.PROVIDER_LOCALTUNNEL,
+                TunnelManager.PROVIDER_CLOUDFLARE,
                 TunnelManager.PROVIDER_PINGGY,
+                TunnelManager.PROVIDER_LOCALHOST_RUN,
                 TunnelManager.PROVIDER_SERVEO,
                 TunnelManager.PROVIDER_CUSTOM
         };
         new AlertDialog.Builder(this)
                 .setTitle("🌍 CHOOSE TUNNEL PROVIDER")
                 .setItems(provs, (d, w) -> {
-                    p.edit().putString("tunnelProvider", provs[w]).apply();
-                    toast("Tunnel set to: " + provs[w]);
+                    String selected = provs[w];
+                    if (selected.equals(TunnelManager.PROVIDER_CUSTOM)) {
+                        promptCustomDomain();
+                        return;
+                    }
+                    p.edit().putString("tunnelProvider", selected).apply();
+                    toast("Tunnel set to: " + selected);
                     if (WebServerService.running) {
                         stopServer();
-                        h.postDelayed(this::startServer, 600);
+                        h.postDelayed(this::startServer, 500);
                     }
                     show(0);
                 })
+                .show();
+    }
+
+    void promptCustomDomain() {
+        LinearLayout b = new LinearLayout(this);
+        b.setOrientation(LinearLayout.VERTICAL);
+        b.setPadding(dp(16), dp(12), dp(16), dp(12));
+
+        TextView info = tv("Enter your public domain, Cloudflare Tunnel domain or DDNS address (e.g. https://myshop.trycloudflare.com or https://mysite.com):", 12, MUTED);
+        b.addView(info);
+
+        String cur = p.getString("customUrl", "");
+        EditText input = input(cur, "https://myserver.example.com");
+        b.addView(input);
+
+        new AlertDialog.Builder(this)
+                .setTitle("🌐 CUSTOM DOMAIN / CLOUDFLARE")
+                .setView(b)
+                .setPositiveButton("SAVE & CONNECT", (d, w) -> {
+                    String domain = input.getText().toString().trim();
+                    if (!domain.isEmpty() && !domain.startsWith("http://") && !domain.startsWith("https://")) {
+                        domain = "https://" + domain;
+                    }
+                    p.edit().putString("customUrl", domain)
+                            .putString("tunnelProvider", TunnelManager.PROVIDER_CUSTOM)
+                            .apply();
+                    toast("Custom domain saved");
+                    if (WebServerService.running) {
+                        stopServer();
+                        h.postDelayed(this::startServer, 500);
+                    }
+                    show(0);
+                })
+                .setNegativeButton("CANCEL", null)
                 .show();
     }
 
@@ -2935,7 +2977,7 @@ public class MainActivity extends Activity {
         section("⚙️  CONTROL CENTER & CONFIGURATION");
         setting("⚡", "Open Web Admin CPanel", "Direct access to full Web Control Center in browser", () -> openWebAdmin());
         setting("🌍", "Public / Private Server Scope", "Toggle Global Public URL or Local Wi-Fi only", () -> scopeDialog());
-        setting("🛰️", "Tunnel Provider", "Localhost.run, Pinggy, Serveo, or Custom Domain", () -> chooseTunnelProvider());
+        setting("🛰️", "Tunnel Provider", "Auto Turbo, Cloudflare, Localtunnel, Pinggy, Localhost.run, Serveo", () -> chooseTunnelProvider());
         setting("🛍️", "Website Templates", "Deploy E-Commerce Online Store or Web Portal", () -> templateDialog());
         setting("🖥️", "Server Port & Engine", "Change HTTP port (8080, 8000, 3000) • restart", () -> engineDialog());
         setting("🔐", "Web Password Protection", "Require login username & password for visitors", () -> security());
