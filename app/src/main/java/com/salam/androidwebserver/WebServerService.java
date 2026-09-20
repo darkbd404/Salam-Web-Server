@@ -131,6 +131,10 @@ public class WebServerService extends Service {
             return respond(s, 503, "text/html; charset=utf-8", maintenancePage(f != null ? f.getName() : "Resource"));
         }
 
+        if("OPTIONS".equals(r.method)){
+            return respond(s, 204, "text/plain", "");
+        }
+
         if("GET".equals(r.method)||"HEAD".equals(r.method)){
             if("/__salam__/".equals(r.path)||"/__salam__".equals(r.path)){
                 String adminKey = getAdminKey(this);
@@ -195,8 +199,23 @@ public class WebServerService extends Service {
     private Set<String> rules(String key){Set<String>s=new HashSet<>();for(String x:pref().getString(key,"").split(",")){x=x.trim();if(!x.isEmpty())s.add(x);}return s;}
     private boolean match(String ip,String rule){try{if(!rule.contains("/"))return ip.equals(rule);String[]z=rule.split("/");byte[]a=InetAddress.getByName(ip).getAddress(),n=InetAddress.getByName(z[0]).getAddress();int bits=Integer.parseInt(z[1]);if(a.length!=n.length||bits<0||bits>a.length*8)return false;int full=bits/8,rem=bits%8;for(int i=0;i<full;i++)if(a[i]!=n[i])return false;if(rem>0){int mask=0xff<<(8-rem);if((a[full]&mask)!=(n[full]&mask))return false;}return true;}catch(Exception e){return false;}}
 
-    private File safe(String path){try{File f=new File(root(),path);String a=root().getCanonicalPath(),b=f.getCanonicalPath();return b.equals(a)||b.startsWith(a+File.separator)?f:null;}catch(Exception e){return null;}}
-    private String clean(String s){String n=s==null?"file":new File(s).getName();return n.replaceAll("[^A-Za-z0-9._ -]","_");}
+    private File safe(String path){
+        try{
+            if(path==null)return null;
+            while(path.startsWith("/"))path=path.substring(1);
+            File f=new File(root(),path);
+            String a=root().getCanonicalPath(),b=f.getCanonicalPath();
+            return b.equals(a)||b.startsWith(a+File.separator)?f:null;
+        }catch(Exception e){
+            return null;
+        }
+    }
+    private String clean(String s){
+        if(s==null||s.trim().isEmpty())return "file_"+System.currentTimeMillis();
+        String n=new File(s).getName().trim();
+        n=n.replace("..","").replace("/","").replace("\\","").replace(":","");
+        return n.isEmpty()?"file_"+System.currentTimeMillis():n;
+    }
     private String action(Map<String,String>d)throws Exception{String a=d.getOrDefault("action","");if("restart".equals(a)){new Thread(()->{stopServer();new Handler(Looper.getMainLooper()).postDelayed(this::startServer,300);}).start();return ok("Restart requested");}if("stop".equals(a)){stopServer();return ok("Server stopped");}if("start".equals(a)){startServer();return ok("Server started");}if("resetFlow".equals(a)){resetFlow();return ok("Network flow counters reset");}if("saveSettings".equals(a)){int port=parseInt(d.get("port"),8080);if(port<1024||port>65535)port=8080;pref().edit().putInt("port",port).putString("password",d.getOrDefault("password","")).putString("allowIps",d.getOrDefault("allowIps","")).putString("blockIps",d.getOrDefault("blockIps","")).putBoolean("allowOnly","1".equals(d.get("allowOnly"))).putInt("rate",Math.max(1,parseInt(d.get("rate"),120))).putInt("maxClients",Math.max(1,parseInt(d.get("maxClients"),32))).putString("customUrl",d.getOrDefault("customUrl","")).apply();load();return ok("Settings saved");}if("block".equals(a)){String ip=d.getOrDefault("ip","").trim();if(ip.isEmpty())return err("IP required");Set<String>s=rules("blockIps");s.add(ip);pref().edit().putString("blockIps",String.join(",",s)).apply();return ok("IP blocked");}if("clear-block".equals(a)){pref().edit().putString("blockIps","").apply();return ok("Blocklist cleared");}if("unblock".equals(a)){String ip=d.getOrDefault("ip","").trim();Set<String>s=rules("blockIps");s.remove(ip);pref().edit().putString("blockIps",String.join(",",s)).apply();return ok("IP unblocked");}File f=safe(d.getOrDefault("path","/"));if("mkdir".equals(a)){if(f==null)return err("Invalid path");return f.mkdirs()||f.exists()?ok("Folder created"):err("Create failed");}if("touch".equals(a)){if(f==null)return err("Invalid path");File par=f.getParentFile();if(par!=null)par.mkdirs();return f.exists()?ok("Already exists"):f.createNewFile()?ok("File created"):err("Create failed");}if("delete".equals(a)){if(f==null||f.equals(root()))return err("Invalid path");delete(f);return ok("Deleted");}if("rename".equals(a)){if(f==null)return err("Invalid path");File n=new File(f.getParentFile(),clean(d.get("name")));return f.renameTo(n)?ok("Renamed"):err("Rename failed");}if("copy".equals(a)||"move".equals(a)){File to=safe(d.getOrDefault("to","/"));if(f==null||to==null)return err("Invalid path");copy(f,to);if("move".equals(a))delete(f);return ok("move".equals(a)?"Moved":"Copied");}if("save".equals(a)){if(f==null)return err("Invalid path");File par=f.getParentFile();if(par!=null)par.mkdirs();try(FileOutputStream o=new FileOutputStream(f)){o.write(d.getOrDefault("content","").getBytes(StandardCharsets.UTF_8));}return ok("Saved");}if("zip".equals(a)){if(f==null||!f.exists())return err("Invalid source");File z=new File(f.getParentFile(),f.getName()+".zip");zip(f,z);return ok("ZIP created");}if("extract".equals(a)){if(f==null||!f.getName().toLowerCase(Locale.US).endsWith(".zip"))return err("ZIP required");File to=safe(d.getOrDefault("to","/"));extract(f,to);return ok("ZIP extracted");}if("toggleMaintenance".equals(a)){String p=d.getOrDefault("path","/");if(p.isEmpty())return err("Path required");if(MAINTENANCE_FILES.contains(p)){MAINTENANCE_FILES.remove(p);return ok("Maintenance mode DISABLED for "+p);}else{MAINTENANCE_FILES.add(p);return ok("Maintenance mode ENABLED for "+p);}}if("toggleGlobalMaintenance".equals(a)){boolean curr=pref().getBoolean("globalMaintenance",false);pref().edit().putBoolean("globalMaintenance",!curr).apply();return ok("Global maintenance "+(!curr?"ENABLED":"DISABLED"));}if("clearLogs".equals(a)){LOGS.clear();HISTORY.clear();return ok("Logs cleared");}return err("Unknown action");}
     private int parseInt(String s,int d){try{return Integer.parseInt(s);}catch(Exception e){return d;}}
     private void delete(File f){if(f.isDirectory()){File[]a=f.listFiles();if(a!=null)for(File x:a)delete(x);}f.delete();}
@@ -248,7 +267,7 @@ public class WebServerService extends Service {
     private int respondWithCookie(Socket s,int code,String type,String body,String cookie)throws IOException{
         byte[]b=body.getBytes(StandardCharsets.UTF_8);
         OutputStream o=s.getOutputStream();
-        String h="HTTP/1.1 "+code+" "+reason(code)+"\r\nContent-Type: "+type+"\r\nContent-Length: "+b.length+"\r\nSet-Cookie: "+cookie+"\r\nCache-Control: no-store\r\nX-Content-Type-Options: nosniff\r\nConnection: close\r\n\r\n";
+        String h="HTTP/1.1 "+code+" "+reason(code)+"\r\nContent-Type: "+type+"\r\nContent-Length: "+b.length+"\r\nSet-Cookie: "+cookie+"\r\nAccess-Control-Allow-Origin: *\r\nAccess-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS, HEAD, PATCH\r\nAccess-Control-Allow-Headers: *\r\nAccess-Control-Expose-Headers: *\r\nCache-Control: no-store\r\nX-Content-Type-Options: nosniff\r\nConnection: close\r\n\r\n";
         byte[]hb=h.getBytes(StandardCharsets.ISO_8859_1);
         o.write(hb);
         o.write(b);
@@ -304,9 +323,68 @@ public class WebServerService extends Service {
         return "<!doctype html><html><head><meta name='viewport' content='width=device-width,initial-scale=1'><meta name='theme-color' content='#020712'><title>Admin Security Gateway • Salam Web Server</title><style>*{box-sizing:border-box}body{margin:0;padding:24px 16px;background:radial-gradient(circle at 50% 0,#10223d 0,#010712 60%);color:#fff;font-family:system-ui,-apple-system,sans-serif;min-height:100vh;display:flex;align-items:center;justify-content:center}.card{max-width:440px;width:100%;background:linear-gradient(145deg,#07172b,#030d1a);border:1px solid #144975;border-radius:24px;padding:32px 24px;box-shadow:0 20px 50px rgba(0,0,0,0.8),0 0 30px rgba(0,217,255,0.15);text-align:center}.icon{font-size:42px;margin-bottom:12px}.badge{display:inline-block;padding:5px 14px;background:rgba(0,229,255,0.12);border:1px solid #00e5ff;color:#00e5ff;border-radius:20px;font-size:11px;font-weight:800;letter-spacing:1px;margin-bottom:14px}h1{font-size:22px;color:#fff;margin:0 0 8px;font-weight:800}p{font-size:13px;color:#94b6d9;line-height:1.6;margin:0 0 20px}input{width:100%;padding:14px;border-radius:14px;background:#020b17;border:1px solid #1a4d7c;color:#00f0ff;font-size:15px;margin-bottom:16px;outline:none;text-align:center;letter-spacing:2px}input:focus{border-color:#00f0ff;box-shadow:0 0 15px rgba(0,240,255,0.3)}button{width:100%;padding:14px;border-radius:14px;border:none;background:linear-gradient(135deg,#00f0ff,#4b4dff);color:#fff;font-weight:800;font-size:14px;cursor:pointer;box-shadow:0 6px 20px rgba(0,240,255,0.35)}button:hover{opacity:0.9}.home-link{display:inline-block;margin-top:16px;color:#6b8aa8;font-size:12px;text-decoration:none}</style></head><body><div class='card'><div class='icon'>🛡️</div><div class='badge'>AUTHENTICATION GATEWAY</div><h1>Admin Control Center</h1><p>Access to this server management console is restricted.<br>Please enter the <b>Admin Key</b> or <b>Web Password</b>.</p><form onsubmit='doLogin(event)'><input id='pwd' type='password' placeholder='Enter Admin Key / Password' required autofocus><button type='submit'>🔓 UNLOCK CPANEL</button></form><a class='home-link' href='/'>← Back to Website Homepage</a></div><script>function doLogin(e){e.preventDefault();var val=document.getElementById('pwd').value.trim();if(!val)return;document.cookie='salam_admin_key='+encodeURIComponent(val)+'; path=/; max-age=86400';window.location.href='/__salam__?key='+encodeURIComponent(val);}</script></body></html>";
     }
 
-    private int respond(Socket s,int code,String type,String body)throws IOException{byte[]b=body.getBytes(StandardCharsets.UTF_8);OutputStream o=s.getOutputStream();String h="HTTP/1.1 "+code+" "+reason(code)+"\r\nContent-Type: "+type+"\r\nContent-Length: "+b.length+"\r\nCache-Control: no-store\r\nX-Content-Type-Options: nosniff\r\nConnection: close\r\n\r\n";byte[]hb=h.getBytes(StandardCharsets.ISO_8859_1);o.write(hb);o.write(b);o.flush();long out=b.length+hb.length;txBytes+=out;trackTx(out);return code;}
-    private int sendFile(Socket s,File f,boolean head)throws IOException{OutputStream o=s.getOutputStream();String h="HTTP/1.1 200 OK\r\nContent-Type: "+mime(f.getName())+"\r\nContent-Length: "+f.length()+"\r\nCache-Control: no-store\r\nX-Content-Type-Options: nosniff\r\nConnection: close\r\n\r\n";byte[]hb=h.getBytes(StandardCharsets.ISO_8859_1);o.write(hb);long out=hb.length;if(!head)try(InputStream i=new FileInputStream(f)){byte[]b=new byte[16384];int n;while((n=i.read(b))>0){o.write(b,0,n);out+=n;}}o.flush();txBytes+=out;trackTx(out);return 200;}
-    private String mime(String n){String x=n.toLowerCase(Locale.US);if(x.endsWith(".html")||x.endsWith(".htm"))return "text/html; charset=utf-8";if(x.endsWith(".css"))return "text/css; charset=utf-8";if(x.endsWith(".js"))return "application/javascript; charset=utf-8";if(x.endsWith(".json"))return "application/json; charset=utf-8";if(x.endsWith(".png"))return "image/png";if(x.endsWith(".jpg")||x.endsWith(".jpeg"))return "image/jpeg";if(x.endsWith(".gif"))return "image/gif";if(x.endsWith(".svg"))return "image/svg+xml";if(x.endsWith(".webp"))return "image/webp";if(x.endsWith(".pdf"))return "application/pdf";if(x.endsWith(".zip"))return "application/zip";if(x.endsWith(".mp4"))return "video/mp4";if(x.endsWith(".mp3"))return "audio/mpeg";if(x.endsWith(".txt"))return "text/plain; charset=utf-8";return "application/octet-stream";}
+    private int respond(Socket s,int code,String type,String body)throws IOException{
+        byte[]b=body.getBytes(StandardCharsets.UTF_8);
+        OutputStream o=s.getOutputStream();
+        String h="HTTP/1.1 "+code+" "+reason(code)+"\r\nContent-Type: "+type+"\r\nContent-Length: "+b.length+"\r\nAccess-Control-Allow-Origin: *\r\nAccess-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS, HEAD, PATCH\r\nAccess-Control-Allow-Headers: *\r\nAccess-Control-Expose-Headers: *\r\nCache-Control: no-store\r\nX-Content-Type-Options: nosniff\r\nConnection: close\r\n\r\n";
+        byte[]hb=h.getBytes(StandardCharsets.ISO_8859_1);
+        o.write(hb);
+        o.write(b);
+        o.flush();
+        long out=b.length+hb.length;
+        txBytes+=out;
+        trackTx(out);
+        return code;
+    }
+    private int sendFile(Socket s,File f,boolean head)throws IOException{
+        OutputStream o=s.getOutputStream();
+        String h="HTTP/1.1 200 OK\r\nContent-Type: "+mime(f.getName())+"\r\nContent-Length: "+f.length()+"\r\nAccess-Control-Allow-Origin: *\r\nAccess-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS, HEAD, PATCH\r\nAccess-Control-Allow-Headers: *\r\nAccess-Control-Expose-Headers: *\r\nCache-Control: no-store\r\nX-Content-Type-Options: nosniff\r\nConnection: close\r\n\r\n";
+        byte[]hb=h.getBytes(StandardCharsets.ISO_8859_1);
+        o.write(hb);
+        long out=hb.length;
+        if(!head)try(InputStream i=new FileInputStream(f)){
+            byte[]b=new byte[16384];
+            int n;
+            while((n=i.read(b))>0){
+                o.write(b,0,n);
+                out+=n;
+            }
+        }
+        o.flush();
+        txBytes+=out;
+        trackTx(out);
+        return 200;
+    }
+    private String mime(String n){
+        String x=n.toLowerCase(Locale.US);
+        if(x.endsWith(".html")||x.endsWith(".htm"))return "text/html; charset=utf-8";
+        if(x.endsWith(".css"))return "text/css; charset=utf-8";
+        if(x.endsWith(".js")||x.endsWith(".mjs"))return "application/javascript; charset=utf-8";
+        if(x.endsWith(".json"))return "application/json; charset=utf-8";
+        if(x.endsWith(".png"))return "image/png";
+        if(x.endsWith(".jpg")||x.endsWith(".jpeg"))return "image/jpeg";
+        if(x.endsWith(".gif"))return "image/gif";
+        if(x.endsWith(".svg"))return "image/svg+xml";
+        if(x.endsWith(".webp"))return "image/webp";
+        if(x.endsWith(".ico"))return "image/x-icon";
+        if(x.endsWith(".pdf"))return "application/pdf";
+        if(x.endsWith(".zip"))return "application/zip";
+        if(x.endsWith(".mp4"))return "video/mp4";
+        if(x.endsWith(".mp3"))return "audio/mpeg";
+        if(x.endsWith(".wav"))return "audio/wav";
+        if(x.endsWith(".ogg"))return "audio/ogg";
+        if(x.endsWith(".webm"))return "video/webm";
+        if(x.endsWith(".woff"))return "font/woff";
+        if(x.endsWith(".woff2"))return "font/woff2";
+        if(x.endsWith(".ttf"))return "font/ttf";
+        if(x.endsWith(".otf"))return "font/otf";
+        if(x.endsWith(".eot"))return "application/vnd.ms-fontobject";
+        if(x.endsWith(".xml"))return "application/xml; charset=utf-8";
+        if(x.endsWith(".txt"))return "text/plain; charset=utf-8";
+        if(x.endsWith(".csv"))return "text/csv; charset=utf-8";
+        if(x.endsWith(".map"))return "application/json; charset=utf-8";
+        return "application/octet-stream";
+    }
     private String reason(int c){switch(c){case 200:return "OK";case 400:return "Bad Request";case 401:return "Unauthorized";case 403:return "Forbidden";case 404:return "Not Found";case 405:return "Method Not Allowed";case 429:return "Too Many Requests";case 503:return "Service Unavailable";default:return "Error";}}
     private void close(Socket s){try{s.close();}catch(Exception ignored){}}
     private void log(String x){String s=now()+" | "+x;LOGS.add(s);while(LOGS.size()>MAX_LOGS)LOGS.remove(0);}

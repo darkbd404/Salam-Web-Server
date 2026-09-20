@@ -34,6 +34,49 @@ public class MainActivity extends Activity {
     long lastReq = 0, lastReqAt = 0;
     int selectedToolCategory = 0; // 0=Diagnostics, 1=IP & Web, 2=Dev Tools, 3=Templates
 
+    boolean isDayMode() {
+        int mode = p != null ? p.getInt("themeMode", 0) : 0; // 0=Auto, 1=Night, 2=Day
+        if (mode == 1) return false;
+        if (mode == 2) return true;
+        // Auto: check system dark mode or time of day (6 AM - 6 PM)
+        int nightModeFlags = getResources().getConfiguration().uiMode & android.content.res.Configuration.UI_MODE_NIGHT_MASK;
+        if (nightModeFlags == android.content.res.Configuration.UI_MODE_NIGHT_YES) return false;
+        if (nightModeFlags == android.content.res.Configuration.UI_MODE_NIGHT_NO) return true;
+        int hour = Calendar.getInstance().get(Calendar.HOUR_OF_DAY);
+        return hour >= 6 && hour < 18;
+    }
+
+    int bgCol() { return isDayMode() ? Color.rgb(243, 246, 252) : BG; }
+    int panelCol() { return isDayMode() ? Color.rgb(255, 255, 255) : PANEL; }
+    int panel2Col() { return isDayMode() ? Color.rgb(238, 244, 252) : PANEL2; }
+    int textCol() { return isDayMode() ? Color.rgb(12, 26, 44) : WHITE; }
+    int mutedCol() { return isDayMode() ? Color.rgb(85, 110, 138) : MUTED; }
+    int strokeCol() { return isDayMode() ? Color.rgb(205, 220, 238) : Color.rgb(18, 67, 99); }
+    int bottomBgCol() { return isDayMode() ? Color.rgb(232, 240, 250) : Color.rgb(4, 21, 38); }
+
+    String themeModeIcon() {
+        int mode = p != null ? p.getInt("themeMode", 0) : 0;
+        if (mode == 0) return isDayMode() ? "🌓" : "🌓";
+        if (mode == 2) return "☀️";
+        return "🌙";
+    }
+
+    String themeModeName() {
+        int mode = p != null ? p.getInt("themeMode", 0) : 0;
+        if (mode == 0) return "🌓 Auto (Follows System/Sun: " + (isDayMode() ? "Day Mode Active" : "Night Mode Active") + ")";
+        if (mode == 2) return "☀️ Day Mode (Light Theme)";
+        return "🌙 Night Mode (Dark Cyber Theme)";
+    }
+
+    void toggleDayNightMode() {
+        int mode = p.getInt("themeMode", 0);
+        int nextMode = (mode == 0) ? 2 : (mode == 2 ? 1 : 0); // 0 (Auto) -> 2 (Day) -> 1 (Night) -> 0
+        p.edit().putInt("themeMode", nextMode).apply();
+        buildShell();
+        String msg = nextMode == 0 ? "🌓 Automatic Day/Night Mode (Syncs with System & Sunlight)" : nextMode == 2 ? "☀️ Day Mode Activated" : "🌙 Night Mode Activated";
+        toast(msg);
+    }
+
     int accent() {
         return new int[]{CYAN, PURPLE, GREEN, ORANGE, Color.rgb(255, 72, 200), Color.rgb(80, 255, 235)}[theme % 6];
     }
@@ -68,9 +111,9 @@ public class MainActivity extends Activity {
     }
 
     GradientDrawable cardBg() {
-        GradientDrawable g = new GradientDrawable(GradientDrawable.Orientation.TL_BR, new int[]{PANEL, PANEL2});
+        GradientDrawable g = new GradientDrawable(GradientDrawable.Orientation.TL_BR, new int[]{panelCol(), panel2Col()});
         g.setCornerRadius(dp(20));
-        g.setStroke(dp(1), Color.rgb(18, 67, 99));
+        g.setStroke(dp(1), strokeCol());
         return g;
     }
 
@@ -109,7 +152,7 @@ public class MainActivity extends Activity {
     void buildShell() {
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
-        root.setBackgroundColor(BG);
+        root.setBackgroundColor(bgCol());
 
         // Top App Bar
         LinearLayout top = new LinearLayout(this);
@@ -119,9 +162,15 @@ public class MainActivity extends Activity {
         ImageView logo = iconView(R.drawable.ic_server, 38);
         add(top, logo, dp(46), 52);
 
-        title = tv("Salam Web Server", 20, WHITE);
+        title = tv("Salam Web Server", 20, textCol());
         title.setTypeface(null, Typeface.BOLD);
         top.addView(title, new LinearLayout.LayoutParams(0, -2, 1));
+
+        TextView themeModeBtn = tv(themeModeIcon(), 22, accent());
+        themeModeBtn.setGravity(Gravity.CENTER);
+        themeModeBtn.setPadding(dp(4), 0, dp(4), 0);
+        themeModeBtn.setOnClickListener(v -> toggleDayNightMode());
+        top.addView(themeModeBtn, new LinearLayout.LayoutParams(dp(42), dp(48)));
 
         TextView qrBtn = tv("📱", 24, accent());
         qrBtn.setGravity(Gravity.CENTER);
@@ -148,7 +197,7 @@ public class MainActivity extends Activity {
         bottom = new LinearLayout(this);
         bottom.setGravity(Gravity.CENTER);
         bottom.setPadding(dp(2), dp(2), dp(2), dp(4));
-        bottom.setBackground(bg(Color.rgb(4, 21, 38), 24));
+        bottom.setBackground(bg(bottomBgCol(), 24));
         nav(R.drawable.ic_home, "Home", 0);
         nav(R.drawable.ic_dashboard, "Tools", 1);
         nav(R.drawable.ic_files, "Files", 2);
@@ -157,7 +206,7 @@ public class MainActivity extends Activity {
         root.addView(bottom, new LinearLayout.LayoutParams(-1, dp(72)));
 
         setContentView(root);
-        show(0);
+        show(page);
     }
 
     void nav(int res, String name, int pg) {
@@ -2768,6 +2817,7 @@ public class MainActivity extends Activity {
         setting("🚦", "Rate Limits & Clients", "Maximum simultaneous clients & requests/minute", () -> limits());
         setting("🚫", "IP Blacklist / Allowlist", "Block malicious client IPs or enforce allowlist", () -> security());
         setting("🔓", "Unblock Client IP", "Remove an IP address from blocklist", () -> unblock());
+        setting("🌓", "Day / Night Mode Engine", themeModeName(), () -> dayNightDialog());
         setting("🎨", "Themes & Visuals", "Ocean Neon, Purple Night, Emerald, Sunset, Arctic", () -> themes());
         setting("📱", "Share Server / QR Code", "Share URL with friends on WhatsApp, Messenger, QR", () -> showQrDialog(displayUrl()));
         setting("💡", "LED Visualizer Engine", "7-color pulsing lights & mathematical wave glow", () -> statusDialog());
@@ -2861,15 +2911,50 @@ public class MainActivity extends Activity {
                 .show();
     }
 
-    void themes() {
-        String[] a = {"🌊 Ocean Neon", "💜 Purple Night", "💚 Emerald Matrix", "🌅 Sunset", "💗 Neon Pink", "🧊 Arctic Cyan"};
+    void dayNightDialog() {
+        String[] options = {
+                "🌓 Automatic (Follows System Dark/Light & Sunlight 6 AM - 6 PM)",
+                "☀️ Day Mode (Clean Bright High-Contrast)",
+                "🌙 Night Mode (Cyber Matrix Dark)"
+        };
+        int current = p.getInt("themeMode", 0);
+        int checked = current == 0 ? 0 : current == 2 ? 1 : 2;
         new AlertDialog.Builder(this)
-                .setTitle("🎨 CHOOSE COMPLETE THEME")
-                .setItems(a, (d, w) -> {
-                    theme = w;
-                    p.edit().putInt("theme", w).apply();
+                .setTitle("🌓 DAY / NIGHT MODE ENGINE")
+                .setSingleChoiceItems(options, checked, (d, which) -> {
+                    int newMode = which == 0 ? 0 : which == 1 ? 2 : 1;
+                    p.edit().putInt("themeMode", newMode).apply();
                     buildShell();
-                    toast(a[w] + " applied to full UI");
+                    show(4);
+                    toast("Day/Night mode updated: " + (newMode == 0 ? "Auto" : newMode == 2 ? "Day" : "Night"));
+                    d.dismiss();
+                })
+                .setNegativeButton("CANCEL", null)
+                .show();
+    }
+
+    void themes() {
+        String[] a = {
+                "🌓 Switch Day / Night Mode (" + (p.getInt("themeMode", 0) == 0 ? "Auto" : p.getInt("themeMode", 0) == 2 ? "Day" : "Night") + ")",
+                "🌊 Ocean Neon (Cyan & Blue)",
+                "💜 Purple Night (Purple & Violet)",
+                "💚 Emerald Matrix (Emerald & Mint)",
+                "🌅 Sunset Horizon (Orange & Coral)",
+                "💗 Neon Pink (Cyber Pink & Magenta)",
+                "🧊 Arctic Cyan (Ice Blue & Ocean Blue)"
+        };
+        new AlertDialog.Builder(this)
+                .setTitle("🎨 CHOOSE THEME & LIGHTING")
+                .setItems(a, (d, w) -> {
+                    if (w == 0) {
+                        dayNightDialog();
+                    } else {
+                        theme = w - 1;
+                        p.edit().putInt("theme", theme).apply();
+                        buildShell();
+                        show(page);
+                        toast(a[w] + " applied to full UI");
+                    }
                 })
                 .show();
     }
@@ -3030,13 +3115,14 @@ public class MainActivity extends Activity {
 
     void menu() {
         new AlertDialog.Builder(this)
-                .setItems(new String[]{"🔄 Restart Server", "📱 Share Server / QR Code", "🛍️ Deploy E-Commerce Shop", "🛠️ Network Tools", "👨‍💻 Developer"}, (d, w) -> {
+                .setItems(new String[]{"🔄 Restart Server", "🌓 Day / Night Mode (" + (p.getInt("themeMode", 0) == 0 ? "Auto" : p.getInt("themeMode", 0) == 2 ? "Day" : "Night") + ")", "📱 Share Server / QR Code", "🛍️ Deploy E-Commerce Shop", "🛠️ Network Tools", "👨‍💻 Developer"}, (d, w) -> {
                     if (w == 0) {
                         stopServer();
                         h.postDelayed(this::startServer, 700);
-                    } else if (w == 1) showQrDialog(displayUrl());
-                    else if (w == 2) deployEcommerceDialog();
-                    else if (w == 3) show(1);
+                    } else if (w == 1) dayNightDialog();
+                    else if (w == 2) showQrDialog(displayUrl());
+                    else if (w == 3) deployEcommerceDialog();
+                    else if (w == 4) show(1);
                     else about();
                 })
                 .show();
