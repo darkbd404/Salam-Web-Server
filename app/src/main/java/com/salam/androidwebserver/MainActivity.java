@@ -3,10 +3,12 @@ package com.salam.androidwebserver;
 import android.Manifest;
 import android.app.*;
 import android.content.*;
+import android.database.Cursor;
 import android.graphics.*;
 import android.graphics.drawable.*;
 import android.net.Uri;
 import android.os.*;
+import android.provider.OpenableColumns;
 import android.text.Editable;
 import android.text.TextUtils;
 import android.text.TextWatcher;
@@ -56,7 +58,7 @@ public class MainActivity extends Activity {
 
     String themeModeIcon() {
         int mode = p != null ? p.getInt("themeMode", 0) : 0;
-        if (mode == 0) return isDayMode() ? "🌓" : "🌓";
+        if (mode == 0) return "🌓";
         if (mode == 2) return "☀️";
         return "🌙";
     }
@@ -93,7 +95,13 @@ public class MainActivity extends Activity {
         TextView v = new TextView(this);
         v.setText(s);
         v.setTextSize(z);
-        v.setTextColor(c);
+        if (c == WHITE) {
+            v.setTextColor(textCol());
+        } else if (c == MUTED) {
+            v.setTextColor(mutedCol());
+        } else {
+            v.setTextColor(c);
+        }
         return v;
     }
 
@@ -118,7 +126,10 @@ public class MainActivity extends Activity {
     }
 
     TextView button(String s) {
-        TextView v = tv(s, 13, WHITE);
+        TextView v = new TextView(this);
+        v.setText(s);
+        v.setTextSize(13);
+        v.setTextColor(Color.WHITE);
         v.setGravity(Gravity.CENTER);
         v.setTypeface(null, Typeface.BOLD);
         v.setBackground(grad(15));
@@ -1955,6 +1966,7 @@ public class MainActivity extends Activity {
     // TAB 2: FILES MANAGER & CODE HOSTING
     // ==========================================
     void files() {
+        repairPrefixedFiles(new File(WebServerService.webRoot(this), cwd));
         section("📁  CPANEL-STYLE FILE & SITE MANAGER");
 
         boolean isGridView = p.getBoolean("cpanelGridMode", true);
@@ -2689,10 +2701,51 @@ public class MainActivity extends Activity {
                 .show();
     }
 
+    String getDisplayName(Uri uri) {
+        String result = null;
+        if (uri == null) return "file_" + System.currentTimeMillis();
+        if ("content".equalsIgnoreCase(uri.getScheme())) {
+            try (Cursor cursor = getContentResolver().query(uri, new String[]{OpenableColumns.DISPLAY_NAME}, null, null, null)) {
+                if (cursor != null && cursor.moveToFirst()) {
+                    int colIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME);
+                    if (colIndex >= 0) {
+                        result = cursor.getString(colIndex);
+                    }
+                }
+            } catch (Exception ignored) {}
+        }
+        if (result == null || result.isEmpty()) {
+            result = uri.getLastPathSegment();
+            if (result != null) {
+                int colon = result.lastIndexOf(':');
+                if (colon != -1) result = result.substring(colon + 1);
+                int slash = result.lastIndexOf('/');
+                if (slash != -1) result = result.substring(slash + 1);
+            }
+        }
+        if (result == null || result.trim().isEmpty()) {
+            result = "file_" + System.currentTimeMillis();
+        }
+        return result.trim();
+    }
+
+    private File saveUriToFile(Uri uri, File targetDir) throws Exception {
+        String name = getDisplayName(uri);
+        File out = new File(targetDir, name);
+        try (InputStream in = getContentResolver().openInputStream(uri);
+             FileOutputStream o = new FileOutputStream(out)) {
+            byte[] b = new byte[16384];
+            int k;
+            while ((k = in.read(b)) > 0) o.write(b, 0, k);
+        }
+        return out;
+    }
+
     void pick(int req) {
         Intent i = new Intent(Intent.ACTION_OPEN_DOCUMENT);
         i.setType("*/*");
         i.addCategory(Intent.CATEGORY_OPENABLE);
+        i.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true);
         if (req == 23) i.setType("application/zip");
         startActivityForResult(i, req);
     }
@@ -2702,25 +2755,67 @@ public class MainActivity extends Activity {
         super.onActivityResult(r, c, d);
         if (c != RESULT_OK || d == null) return;
         try {
-            InputStream in = getContentResolver().openInputStream(d.getData());
-            String n = String.valueOf(d.getData().getLastPathSegment()).replaceAll("[^A-Za-z0-9._ -]", "_");
-            File out = new File(WebServerService.webRoot(this), cwd + "/" + n);
-            FileOutputStream o = new FileOutputStream(out);
-            byte[] b = new byte[16384];
-            int k;
-            while ((k = in.read(b)) > 0) o.write(b, 0, k);
-            in.close();
-            o.close();
+            File targetDir = new File(WebServerService.webRoot(this), cwd);
+            if (!targetDir.exists()) targetDir.mkdirs();
+
+            List<File> savedFiles = new ArrayList<>();
+            if (d.getClipData() != null) {
+                int count = d.getClipData().getItemCount();
+                for (int i = 0; i < count; i++) {
+                    Uri uri = d.getClipData().getItemAt(i).getUri();
+                    if (uri != null) {
+                        savedFiles.add(saveUriToFile(uri, targetDir));
+                    }
+                }
+            } else if (d.getData() != null) {
+                savedFiles.add(saveUriToFile(d.getData(), targetDir));
+            }
+
+            if (savedFiles.isEmpty()) return;
+
             if (r == 23) {
-                WebServerService.unzip(out, new File(WebServerService.webRoot(this), cwd));
-                toast("ZIP extracted");
+                for (File zipFile : savedFiles) {
+                    WebServerService.unzip(zipFile, targetDir);
+                }
+                toast("ZIP archive extracted successfully!");
                 show(2);
             } else {
+                // Auto-repair any prefixed filenames in directory
+                repairPrefixedFiles(targetDir);
                 show(2);
-                showUploadedUrl(out);
+                if (savedFiles.size() == 1) {
+                    showUploadedUrl(savedFiles.get(0));
+                } else {
+                    toast(savedFiles.size() + " files uploaded to " + cwd);
+                }
             }
         } catch (Exception e) {
-            toast(e.getMessage());
+            toast("Upload error: " + e.getMessage());
+        }
+    }
+
+    void repairPrefixedFiles(File dir) {
+        if (dir == null || !dir.exists() || !dir.isDirectory()) return;
+        File[] files = dir.listFiles();
+        if (files == null) return;
+        for (File f : files) {
+            if (f.isFile()) {
+                String n = f.getName();
+                String cleanName = null;
+                if (n.startsWith("Primary_www_")) {
+                    cleanName = n.substring("Primary_www_".length());
+                } else if (n.startsWith("primary_www_")) {
+                    cleanName = n.substring("primary_www_".length());
+                } else if (n.contains("___") && (n.endsWith(".html") || n.endsWith(".htm") || n.endsWith(".json") || n.endsWith(".js") || n.endsWith(".css") || n.endsWith(".php"))) {
+                    cleanName = n.substring(n.lastIndexOf("___") + 3);
+                }
+                if (cleanName != null && !cleanName.isEmpty()) {
+                    File target = new File(dir, cleanName);
+                    if (!target.exists()) {
+                        f.renameTo(target);
+                    }
+                }
+            }
         }
     }
 

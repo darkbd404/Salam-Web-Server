@@ -1,6 +1,7 @@
 package com.salam.androidwebserver;
 
 import java.io.File;
+import java.io.FileOutputStream;
 import java.nio.charset.StandardCharsets;
 import java.text.SimpleDateFormat;
 import java.util.*;
@@ -12,7 +13,8 @@ public final class PhpEngine {
     public static String execute(File phpFile, String method, String query, byte[] postBody, Map<String, String> headers, File webRoot) {
         try {
             String source = WebServerService.readText(phpFile);
-            return executeSource(source, phpFile.getName(), method, query, postBody, headers, webRoot, phpFile.getParentFile());
+            File workingDir = phpFile.getParentFile() != null ? phpFile.getParentFile() : webRoot;
+            return executeSource(source, phpFile.getName(), method, query, postBody, headers, webRoot, workingDir);
         } catch (Exception e) {
             return "<html><body><h2 style='color:red'>PHP Execution Error</h2><pre>" + e.getMessage() + "</pre></body></html>";
         }
@@ -60,7 +62,8 @@ public final class PhpEngine {
         StringBuilder out = new StringBuilder();
         String[] lines = code.split("\n");
 
-        for (String rawLine : lines) {
+        for (int i = 0; i < lines.length; i++) {
+            String rawLine = lines[i];
             String line = rawLine.trim();
             if (line.isEmpty() || line.startsWith("//") || line.startsWith("#")) continue;
 
@@ -74,8 +77,25 @@ public final class PhpEngine {
             if (line.startsWith("echo ") || line.startsWith("print ") || line.startsWith("echo(") || line.startsWith("print(")) {
                 String expr = line.replaceFirst("^(echo|print)\\s*", "").replaceFirst(";\\s*$", "").trim();
                 if (expr.startsWith("(") && expr.endsWith(")")) expr = expr.substring(1, expr.length() - 1).trim();
-                String val = evaluateExpression(expr, vars);
+                String val = evaluateExpression(expr, vars, workingDir);
                 out.append(val);
+                continue;
+            }
+
+            // file_put_contents('filename', $data)
+            if (line.startsWith("file_put_contents(") && line.endsWith(");")) {
+                String inner = line.substring("file_put_contents(".length(), line.length() - 2).trim();
+                String[] args = splitArgs(inner);
+                if (args.length >= 2) {
+                    String filename = evaluateExpression(args[0], vars, workingDir);
+                    String data = evaluateExpression(args[1], vars, workingDir);
+                    try {
+                        File target = new File(workingDir, filename);
+                        try (FileOutputStream fos = new FileOutputStream(target)) {
+                            fos.write(data.getBytes(StandardCharsets.UTF_8));
+                        }
+                    } catch (Exception ignored) {}
+                }
                 continue;
             }
 
@@ -85,7 +105,7 @@ public final class PhpEngine {
                 Matcher m = p.matcher(line);
                 if (m.find()) {
                     String arg = m.group(1).trim();
-                    out.append("<pre>").append(evaluateExpression(arg, vars)).append("</pre>");
+                    out.append("<pre>").append(evaluateExpression(arg, vars, workingDir)).append("</pre>");
                 }
                 continue;
             }
@@ -111,7 +131,7 @@ public final class PhpEngine {
                 int eqIdx = line.indexOf('=');
                 String varName = line.substring(1, eqIdx).trim();
                 String expr = line.substring(eqIdx + 1).replaceFirst(";\\s*$", "").trim();
-                String val = evaluateExpression(expr, vars);
+                String val = evaluateExpression(expr, vars, workingDir);
                 vars.put(varName, val);
                 continue;
             }
@@ -120,7 +140,33 @@ public final class PhpEngine {
         return out.toString();
     }
 
-    private static String evaluateExpression(String expr, Map<String, Object> vars) {
+    private static String[] splitArgs(String s) {
+        List<String> list = new ArrayList<>();
+        StringBuilder current = new StringBuilder();
+        boolean inQuotes = false;
+        char quoteChar = 0;
+        for (int i = 0; i < s.length(); i++) {
+            char c = s.charAt(i);
+            if ((c == '"' || c == '\'') && (i == 0 || s.charAt(i - 1) != '\\')) {
+                if (!inQuotes) {
+                    inQuotes = true;
+                    quoteChar = c;
+                } else if (quoteChar == c) {
+                    inQuotes = false;
+                }
+                current.append(c);
+            } else if (c == ',' && !inQuotes) {
+                list.add(current.toString().trim());
+                current.setLength(0);
+            } else {
+                current.append(c);
+            }
+        }
+        if (current.length() > 0) list.add(current.toString().trim());
+        return list.toArray(new String[0]);
+    }
+
+    private static String evaluateExpression(String expr, Map<String, Object> vars, File workingDir) {
         if (expr == null || expr.isEmpty()) return "";
         expr = expr.trim();
 
@@ -128,8 +174,30 @@ public final class PhpEngine {
         if (expr.contains(" . ")) {
             String[] parts = expr.split(" \\. ");
             StringBuilder sb = new StringBuilder();
-            for (String p : parts) sb.append(evaluateExpression(p.trim(), vars));
+            for (String p : parts) sb.append(evaluateExpression(p.trim(), vars, workingDir));
             return sb.toString();
+        }
+
+        // file_get_contents('filename')
+        if (expr.startsWith("file_get_contents(") && expr.endsWith(")")) {
+            String inner = expr.substring(18, expr.length() - 1).trim();
+            String path = evaluateExpression(inner, vars, workingDir);
+            File f = new File(workingDir, path);
+            if (f.exists() && f.isFile()) {
+                try {
+                    return WebServerService.readText(f);
+                } catch (Exception e) {
+                    return "";
+                }
+            }
+            return "";
+        }
+
+        // htmlspecialchars(...)
+        if (expr.startsWith("htmlspecialchars(") && expr.endsWith(")")) {
+            String inner = expr.substring(17, expr.length() - 1).trim();
+            String val = evaluateExpression(inner, vars, workingDir);
+            return val.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("\"", "&quot;");
         }
 
         // date()
@@ -151,11 +219,11 @@ public final class PhpEngine {
 
         // md5 / sha1
         if (expr.startsWith("md5(") && expr.endsWith(")")) {
-            String inner = evaluateExpression(expr.substring(4, expr.length() - 1).trim(), vars);
+            String inner = evaluateExpression(expr.substring(4, expr.length() - 1).trim(), vars, workingDir);
             return NetworkTools.hash(inner, "MD5");
         }
         if (expr.startsWith("sha1(") && expr.endsWith(")")) {
-            String inner = evaluateExpression(expr.substring(5, expr.length() - 1).trim(), vars);
+            String inner = evaluateExpression(expr.substring(5, expr.length() - 1).trim(), vars, workingDir);
             return NetworkTools.hash(inner, "SHA-1");
         }
 

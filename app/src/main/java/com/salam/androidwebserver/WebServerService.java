@@ -122,8 +122,92 @@ public class WebServerService extends Service {
         }finally{clients.remove(ip);close(s);}
     }
 
+    private int redirect(Socket s, String location) throws IOException {
+        OutputStream o = s.getOutputStream();
+        String h = "HTTP/1.1 301 Moved Permanently\r\nLocation: " + location + "\r\nContent-Length: 0\r\nAccess-Control-Allow-Origin: *\r\nConnection: close\r\n\r\n";
+        byte[] hb = h.getBytes(StandardCharsets.ISO_8859_1);
+        o.write(hb);
+        o.flush();
+        long out = hb.length;
+        txBytes += out;
+        trackTx(out);
+        return 301;
+    }
+
+    private File resolveFile(Req r) {
+        if (r == null || r.path == null) return null;
+        String path = r.path;
+
+        // 1. Direct safe path
+        File f = safe(path);
+        if (f != null && f.exists()) return f;
+
+        // 2. Decode variations (spaces, percent encoding, plus signs)
+        try {
+            String alt = URLDecoder.decode(path.replace("+", " "), "UTF-8");
+            File fAlt = safe(alt);
+            if (fAlt != null && fAlt.exists()) return fAlt;
+        } catch (Exception ignored) {}
+
+        // 3. Referer header resolution (resolves relative assets called from subfolders)
+        String ref = r.headers.get("referer");
+        if (ref != null && !ref.isEmpty()) {
+            try {
+                URI refUri = new URI(ref);
+                String refPath = refUri.getPath();
+                if (refPath != null && !refPath.isEmpty()) {
+                    int lastSlash = refPath.lastIndexOf('/');
+                    if (lastSlash > 0) {
+                        String parentDir = refPath.substring(0, lastSlash);
+                        File fRef = safe(parentDir + "/" + (path.startsWith("/") ? path.substring(1) : path));
+                        if (fRef != null && fRef.exists()) return fRef;
+                    }
+                }
+            } catch (Exception ignored) {}
+        }
+
+        // 4. Smart filename matcher across directory tree
+        // (Handles prefix uploads e.g. Primary_www_falkamuri_female.json -> falkamuri_female.json)
+        String reqFileName = new File(path).getName();
+        if (!reqFileName.isEmpty()) {
+            File matched = findMatchingFile(root(), reqFileName);
+            if (matched != null && matched.exists()) return matched;
+        }
+
+        return f != null ? f : new File(root(), path.startsWith("/") ? path.substring(1) : path);
+    }
+
+    private File findMatchingFile(File dir, String targetName) {
+        if (dir == null || !dir.exists()) return null;
+        File direct = new File(dir, targetName);
+        if (direct.exists()) return direct;
+
+        File[] files = dir.listFiles();
+        if (files == null) return null;
+
+        String tn = targetName.toLowerCase(Locale.US);
+        // Check direct children for match or suffix
+        for (File f : files) {
+            if (f.isFile()) {
+                String fn = f.getName().toLowerCase(Locale.US);
+                if (fn.equals(tn) || fn.endsWith("_" + tn) || fn.endsWith("___" + tn) || fn.endsWith(tn)) {
+                    return f;
+                }
+            }
+        }
+
+        // Check subdirectories
+        for (File f : files) {
+            if (f.isDirectory() && !f.getName().startsWith(".")) {
+                File found = findMatchingFile(f, targetName);
+                if (found != null) return found;
+            }
+        }
+        return null;
+    }
+
     private int route(Req r,Socket s)throws Exception{
-        File f=safe(r.path);
+        File f=resolveFile(r);
 
         // Check maintenance mode for specific file or root
         String checkPath = r.path.startsWith("/") ? r.path : "/" + r.path;
@@ -142,9 +226,13 @@ public class WebServerService extends Service {
             }
             if(r.path.startsWith("/__salam__/api/"))return api(r,s);
             if(f==null)return respond(s,403,"text/plain","Forbidden");
-            if(!f.exists())return respond(s,404,"text/plain","Not Found");
 
             if(f.isDirectory()){
+                // Universal directory redirect: if URL doesn't end with slash, redirect to dirname/
+                if(!r.path.endsWith("/") && !r.path.isEmpty()){
+                    return redirect(s, r.path + "/" + (r.query != null && !r.query.isEmpty() ? "?" + r.query : ""));
+                }
+
                 File indexPhp = new File(f, "index.php");
                 if (indexPhp.exists() && indexPhp.isFile()) {
                     String phpOutput = PhpEngine.execute(indexPhp, r.method, r.query, r.body, r.headers, root());
@@ -152,6 +240,18 @@ public class WebServerService extends Service {
                 }
                 File index=new File(f,"index.html");
                 if(!index.exists())index=new File(f,"index.htm");
+                if(!index.exists()){
+                    // Check any html file in the directory
+                    File[] dirFiles = f.listFiles();
+                    if(dirFiles != null){
+                        for(File df : dirFiles){
+                            if(df.isFile() && (df.getName().toLowerCase(Locale.US).endsWith(".html") || df.getName().toLowerCase(Locale.US).endsWith(".htm"))){
+                                index = df;
+                                break;
+                            }
+                        }
+                    }
+                }
                 if(!index.exists()&&f.equals(root()))index=new File(root(),"index.html");
                 if(index.exists()&&index.isFile()){
                     String indexPath = rel(index);
@@ -166,6 +266,8 @@ public class WebServerService extends Service {
                 }
                 return respond(s,403,"text/html; charset=utf-8",forbiddenPage());
             }
+
+            if(!f.exists())return respond(s,404,"text/plain","Not Found");
 
             // Direct PHP execution
             if(f.isFile() && f.getName().toLowerCase(Locale.US).endsWith(".php")){
